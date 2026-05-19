@@ -67,7 +67,8 @@
             document.getElementById("live-note").textContent = "";
             return;
         }
-        var sseUrl = "http://localhost:8081/assign-server/api/assignments/" + encodeURIComponent(assignmentId) + "/events";
+        var apiBaseUrl = "${applicationScope.serverBaseUrl}";
+        var sseUrl = apiBaseUrl + "/api/assignments/" + encodeURIComponent(assignmentId) + "/events";
         var note = document.getElementById("live-note");
         var statusEl = document.getElementById("run-status");
         var outputStatusEl = document.getElementById("run-output-status");

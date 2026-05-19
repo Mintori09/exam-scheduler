@@ -29,3 +29,9 @@ dev:
         (cd assign-server && mvn -q clean compile && mvn jetty:run -Djetty.http.port=8081) & \
         (cd client-web && mvn -q clean compile && mvn jetty:run -Djetty.http.port=8080) & \
         wait'"
+
+deploy-server:
+    ./scripts/deploy-server-lan.sh
+
+deploy-client:
+    ./scripts/deploy-client-lan.sh

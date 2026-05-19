@@ -91,7 +91,8 @@ public class AssignmentItemServlet extends BaseJsonServlet {
         resp.setContentType("text/event-stream;charset=UTF-8");
         resp.setHeader("Cache-Control", "no-cache");
         resp.setHeader("Connection", "keep-alive");
-        resp.setHeader("Access-Control-Allow-Origin", "http://localhost:8080");
+        String origin = req.getHeader("Origin");
+        resp.setHeader("Access-Control-Allow-Origin", origin == null || origin.isBlank() ? "*" : origin);
 
         AsyncContext asyncContext = req.startAsync();
         asyncContext.setTimeout(0);
