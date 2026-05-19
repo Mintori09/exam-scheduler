@@ -12,6 +12,8 @@ public record AssignmentRun(
         int completedSessionCount,
         int roomCount,
         int staffCount,
+        String outputStatus,
+        String outputError,
         String invigilatorFilePath,
         String monitorFilePath
 ) {

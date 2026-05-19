@@ -12,6 +12,8 @@ public record AssignmentRunView(
         int completedSessionCount,
         int roomCount,
         int staffCount,
+        String outputStatus,
+        String outputError,
         String invigilatorFilePath,
         String monitorFilePath
 ) {
@@ -24,6 +26,8 @@ public record AssignmentRunView(
     public int getCompletedSessionCount() { return completedSessionCount; }
     public int getRoomCount() { return roomCount; }
     public int getStaffCount() { return staffCount; }
+    public String getOutputStatus() { return outputStatus; }
+    public String getOutputError() { return outputError; }
     public String getInvigilatorFilePath() { return invigilatorFilePath; }
     public String getMonitorFilePath() { return monitorFilePath; }
 }
