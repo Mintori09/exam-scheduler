@@ -1,0 +1,72 @@
+<h2>Client/Server Java Web Options</h2>
+<p class="subtitle">De bai: phan cong can bo coi thi. Rang buoc da chot: REST/HTTP, SQLite, 2 app rieng, chay 2 may LAN, UI co lich su va trang chi tiet.</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. Servlet/JSP ca 2 ben</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Browser</div>
+          <div style="display:flex; gap:12px;">
+            <div class="mock-sidebar" style="flex:1;">Client Web<br>Servlet + JSP<br>Port 8080</div>
+            <div class="mock-sidebar" style="flex:1;">API Server<br>Servlet JSON<br>Port 8081</div>
+            <div class="mock-sidebar" style="flex:1;">SQLite<br>Server side</div>
+          </div>
+          <div class="mock-content" style="margin-top:12px;">Client upload Excel -> REST JSON/multipart -> Server xu ly xep lich + xuat file</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Huong co dien, bam sat Java web</h3>
+      <p>Dong bo voi lua chon Servlet/JSP. Code nhieu hon, tu xu ly JSON, validation, routing.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. JSP client + Spring Boot API</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Browser</div>
+          <div style="display:flex; gap:12px;">
+            <div class="mock-sidebar" style="flex:1;">Client Web<br>Servlet + JSP<br>Port 8080</div>
+            <div class="mock-sidebar" style="flex:1;">API Server<br>Spring REST<br>Port 8081</div>
+            <div class="mock-sidebar" style="flex:1;">SQLite<br>JPA/JDBC</div>
+          </div>
+          <div class="mock-content" style="margin-top:12px;">Client giu giao dien co dien. Server don phan xu ly file, API, luu tru.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Tron co dien + hien dai</h3>
+      <p>Nhanh lam server hon, de test API hon. Khong dong nhat cong nghe giua hai ben.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. Spring Boot ca 2 ben</div>
+        <div class="mockup-body">
+          <div class="mock-nav">Browser</div>
+          <div style="display:flex; gap:12px;">
+            <div class="mock-sidebar" style="flex:1;">Client Web<br>Thymeleaf MVC<br>Port 8080</div>
+            <div class="mock-sidebar" style="flex:1;">API Server<br>Spring REST<br>Port 8081</div>
+            <div class="mock-sidebar" style="flex:1;">SQLite<br>JPA/JDBC</div>
+          </div>
+          <div class="mock-content" style="margin-top:12px;">Nhanh nhat de hoan thanh. It ma lap. Tach lop ro.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Thuc dung nhat</h3>
+      <p>Tot cho tien do va test. Lech voi lua chon Servlet/JSP thuan ban dau.</p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Khuyen nghi hien tai</h3>
+  <p><strong>B</strong> neu muon giao dien phia client van la JSP/Servlet nhu yeu cau, nhung server sach hon de xu ly Excel, SQLite, REST, va lich su. <strong>A</strong> chi nen chon neu giang vien uu tien Java web co dien o ca hai ben.</p>
+</div>

@@ -1,0 +1,32 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+
+# Node.js
+node_modules/
+
+# Test results (Playwright)
+test-results/
+
+# Runtime data (DB + runs)
+assign-server-data/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
