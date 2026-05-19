@@ -51,6 +51,7 @@
             <th>Thời gian</th>
             <th>Mã lần chạy</th>
             <th>Trạng thái</th>
+            <th>Xuất file</th>
             <th>Tiến độ</th>
             <th>Thông điệp</th>
             <th>Ca</th>
@@ -64,6 +65,7 @@
                 <td>${run.createdAt}</td>
                 <td><a href="${pageContext.request.contextPath}/assignments/${run.assignmentId}">${run.assignmentId}</a></td>
                 <td>${run.status}</td>
+                <td>${run.outputStatus}</td>
                 <td>${run.completedSessionCount}/${run.sessionCount}</td>
                 <td>${run.message}</td>
                 <td>${run.sessionCount}</td>

@@ -18,16 +18,20 @@
     <p><a href="${pageContext.request.contextPath}/assignments">Quay lại</a></p>
     <h1>Chi tiết lần chạy ${detail.run.assignmentId}</h1>
     <p>Trạng thái: ${detail.run.status}</p>
+    <p>Xuất file: ${detail.run.outputStatus}</p>
+    <c:if test="${not empty detail.run.outputError}">
+        <p>Lỗi xuất file: ${detail.run.outputError}</p>
+    </c:if>
     <p>Tiến độ: ${detail.run.completedSessionCount}/${detail.run.sessionCount}</p>
     <p>Thông điệp: ${detail.run.message}</p>
     <p>Thời gian: ${detail.run.createdAt}</p>
     <c:if test="${detail.run.status == 'RUNNING'}">
         <p>Đang xử lý... trang sẽ tự tải lại sau 3 giây.</p>
     </c:if>
-    <c:if test="${detail.invigilatorFileAvailable}">
+    <c:if test="${detail.run.outputStatus == 'READY' && detail.invigilatorFileAvailable}">
         <p><a class="button" href="${pageContext.request.contextPath}/assignments/${detail.run.assignmentId}/downloads/invigilators">Tải DANHSACH_PHANCONG.xlsx</a></p>
     </c:if>
-    <c:if test="${detail.monitorFileAvailable}">
+    <c:if test="${detail.run.outputStatus == 'READY' && detail.monitorFileAvailable}">
         <p><a class="button" href="${pageContext.request.contextPath}/assignments/${detail.run.assignmentId}/downloads/monitors">Tải DANHSACH_GIAMSAT.xlsx</a></p>
     </c:if>
 </div>
@@ -55,7 +59,7 @@
         </tbody>
     </table>
 </div>
-<c:if test="${detail.run.status == 'RUNNING'}">
+<c:if test="${detail.run.status == 'RUNNING' || detail.run.outputStatus == 'GENERATING'}">
     <script>
         setTimeout(function() {
             window.location.reload();

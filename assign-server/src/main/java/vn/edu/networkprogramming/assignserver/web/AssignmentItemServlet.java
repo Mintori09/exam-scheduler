@@ -49,9 +49,26 @@ public class AssignmentItemServlet extends BaseJsonServlet {
     }
 
     private void handleDownload(HttpServletResponse resp, String assignmentId, String type) throws Exception {
+        var detail = assignmentService().getAssignmentDetail(assignmentId);
+        if (detail == null) {
+            writeJson(resp, HttpServletResponse.SC_NOT_FOUND, new ApiErrorResponse("FAILED", "Khong tim thay assignmentId"));
+            return;
+        }
+        String outputStatus = detail.run().outputStatus();
+        if (!"READY".equals(outputStatus)) {
+            writeJson(resp, HttpServletResponse.SC_CONFLICT, new ApiErrorResponse(
+                    "FAILED",
+                    "File ket qua chua san sang. outputStatus=" + outputStatus
+            ));
+            return;
+        }
         var file = "invigilators".equals(type)
                 ? assignmentService().getInvigilatorFile(assignmentId)
                 : "monitors".equals(type) ? assignmentService().getMonitorFile(assignmentId) : null;
+        if (!"invigilators".equals(type) && !"monitors".equals(type)) {
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, new ApiErrorResponse("FAILED", "Loai file khong hop le"));
+            return;
+        }
         if (file == null) {
             writeJson(resp, HttpServletResponse.SC_NOT_FOUND, new ApiErrorResponse("FAILED", "Khong tim thay file ket qua"));
             return;

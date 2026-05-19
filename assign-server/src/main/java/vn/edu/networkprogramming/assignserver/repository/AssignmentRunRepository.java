@@ -1,5 +1,6 @@
 package vn.edu.networkprogramming.assignserver.repository;
 
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -37,6 +38,8 @@ public class AssignmentRunRepository {
                         completed_session_count integer not null default 0,
                         room_count integer not null,
                         staff_count integer not null,
+                        output_status text not null default 'NONE',
+                        output_error text,
                         invigilator_file_path text,
                         monitor_file_path text,
                         sessions_json text not null,
@@ -45,6 +48,8 @@ public class AssignmentRunRepository {
                     """);
             ensureColumn(statement, "assignment_runs", "updated_at", "text");
             ensureColumn(statement, "assignment_runs", "completed_session_count", "integer not null default 0");
+            ensureColumn(statement, "assignment_runs", "output_status", "text not null default 'NONE'");
+            ensureColumn(statement, "assignment_runs", "output_error", "text");
             statement.execute("""
                     create table if not exists assignment_sessions (
                         assignment_id text not null,
@@ -74,8 +79,9 @@ public class AssignmentRunRepository {
              PreparedStatement statement = connection.prepareStatement("""
                      insert into assignment_runs (
                          assignment_id, status, message, created_at, updated_at, session_count, completed_session_count,
-                         room_count, staff_count, invigilator_file_path, monitor_file_path, sessions_json, summary_json
-                     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         room_count, staff_count, output_status, output_error,
+                         invigilator_file_path, monitor_file_path, sessions_json, summary_json
+                     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                      """)) {
             bindRun(statement, run, "[]", "[]");
             statement.executeUpdate();
@@ -94,6 +100,21 @@ public class AssignmentRunRepository {
             statement.setInt(3, completedSessionCount);
             statement.setString(4, Instant.now().toString());
             statement.setString(5, assignmentId);
+            statement.executeUpdate();
+        }
+    }
+
+    public void updateOutputStatus(String assignmentId, String outputStatus, String outputError) throws SQLException {
+        try (Connection connection = open();
+             PreparedStatement statement = connection.prepareStatement("""
+                     update assignment_runs
+                     set output_status = ?, output_error = ?, updated_at = ?
+                     where assignment_id = ?
+                     """)) {
+            statement.setString(1, outputStatus);
+            statement.setString(2, outputError);
+            statement.setString(3, Instant.now().toString());
+            statement.setString(4, assignmentId);
             statement.executeUpdate();
         }
     }
@@ -139,6 +160,40 @@ public class AssignmentRunRepository {
             statement.setString(4, summaryJson);
             statement.setString(5, Instant.now().toString());
             statement.executeUpdate();
+        }
+    }
+
+    public void upsertSessionsBatch(String assignmentId, List<SessionRow> rows) throws SQLException {
+        if (rows.isEmpty()) {
+            return;
+        }
+        try (Connection connection = open();
+             PreparedStatement statement = connection.prepareStatement("""
+                     insert into assignment_sessions (assignment_id, session_no, session_json, summary_json, created_at)
+                     values (?, ?, ?, ?, ?)
+                     on conflict(assignment_id, session_no) do update set
+                        session_json = excluded.session_json,
+                        summary_json = excluded.summary_json
+                     """)) {
+            connection.setAutoCommit(false);
+            try {
+                String now = Instant.now().toString();
+                for (SessionRow row : rows) {
+                    statement.setString(1, assignmentId);
+                    statement.setInt(2, row.sessionNo());
+                    statement.setString(3, row.sessionJson());
+                    statement.setString(4, row.summaryJson());
+                    statement.setString(5, now);
+                    statement.addBatch();
+                }
+                statement.executeBatch();
+                connection.commit();
+            } catch (Exception exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         }
     }
 
@@ -218,6 +273,33 @@ public class AssignmentRunRepository {
         }
     }
 
+    public void upsertFileFromStream(String assignmentId, String role, String originalName, String mimeType, InputStream contentStream, long contentLength)
+            throws SQLException {
+        byte[] contentBytes;
+        try {
+            contentBytes = contentStream.readAllBytes();
+        } catch (java.io.IOException exception) {
+            throw new SQLException("Khong doc duoc noi dung file de luu database", exception);
+        }
+        try (Connection connection = open();
+             PreparedStatement statement = connection.prepareStatement("""
+                     insert into assignment_files (assignment_id, file_role, original_name, mime_type, content_blob, created_at)
+                     values (?, ?, ?, ?, ?, ?)
+                     on conflict(assignment_id, file_role) do update set
+                         original_name = excluded.original_name,
+                         mime_type = excluded.mime_type,
+                         content_blob = excluded.content_blob
+                     """)) {
+            statement.setString(1, assignmentId);
+            statement.setString(2, role);
+            statement.setString(3, originalName);
+            statement.setString(4, mimeType);
+            statement.setBytes(5, contentBytes);
+            statement.setString(6, Instant.now().toString());
+            statement.executeUpdate();
+        }
+    }
+
     public AssignmentFileContent findFile(String assignmentId, String role) throws SQLException {
         try (Connection connection = open();
              PreparedStatement statement = connection.prepareStatement("""
@@ -245,7 +327,7 @@ public class AssignmentRunRepository {
         try (Connection connection = open();
              PreparedStatement statement = connection.prepareStatement("""
                      select assignment_id, status, message, created_at, updated_at, session_count, completed_session_count,
-                            room_count, staff_count, invigilator_file_path, monitor_file_path
+                            room_count, staff_count, output_status, output_error, invigilator_file_path, monitor_file_path
                      from assignment_runs
                      order by created_at desc
                      """);
@@ -267,7 +349,8 @@ public class AssignmentRunRepository {
         try (Connection connection = open();
              PreparedStatement statement = connection.prepareStatement("""
                      select assignment_id, status, message, created_at, updated_at, session_count, completed_session_count,
-                            room_count, staff_count, invigilator_file_path, monitor_file_path, sessions_json, summary_json
+                            room_count, staff_count, output_status, output_error, invigilator_file_path, monitor_file_path,
+                            sessions_json, summary_json
                      from assignment_runs
                      where assignment_id = ?
                      """)) {
@@ -295,10 +378,12 @@ public class AssignmentRunRepository {
         statement.setInt(7, run.completedSessionCount());
         statement.setInt(8, run.roomCount());
         statement.setInt(9, run.staffCount());
-        statement.setString(10, run.invigilatorFilePath());
-        statement.setString(11, run.monitorFilePath());
-        statement.setString(12, sessionsJson);
-        statement.setString(13, summaryJson);
+        statement.setString(10, run.outputStatus());
+        statement.setString(11, run.outputError());
+        statement.setString(12, run.invigilatorFilePath());
+        statement.setString(13, run.monitorFilePath());
+        statement.setString(14, sessionsJson);
+        statement.setString(15, summaryJson);
     }
 
     private AssignmentRun map(ResultSet resultSet) throws SQLException {
@@ -316,6 +401,8 @@ public class AssignmentRunRepository {
                 resultSet.getInt("completed_session_count"),
                 resultSet.getInt("room_count"),
                 resultSet.getInt("staff_count"),
+                resultSet.getString("output_status"),
+                resultSet.getString("output_error"),
                 resultSet.getString("invigilator_file_path"),
                 resultSet.getString("monitor_file_path")
         );
@@ -337,7 +424,17 @@ public class AssignmentRunRepository {
         try (Statement statement = connection.createStatement()) {
             statement.execute("pragma busy_timeout = 10000");
             statement.execute("pragma journal_mode = WAL");
+            statement.execute("pragma synchronous = NORMAL");
+            statement.execute("pragma temp_store = MEMORY");
+            statement.execute("pragma cache_size = -200000");
         }
         return connection;
+    }
+
+    public record SessionRow(
+            int sessionNo,
+            String sessionJson,
+            String summaryJson
+    ) {
     }
 }

@@ -2,6 +2,8 @@ package vn.edu.networkprogramming.assignserver.service;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -36,6 +38,7 @@ public class AssignmentApplicationService {
     private final JsonService jsonService;
     private final Path storageRoot;
     private final ExecutorService executorService = Executors.newCachedThreadPool();
+    private static final int SESSION_DB_BATCH_SIZE = 10;
 
     public AssignmentApplicationService(
             ExcelAssignmentInputService inputService,
@@ -77,6 +80,8 @@ public class AssignmentApplicationService {
                 0,
                 input.roomRecords().size(),
                 input.staffRecords().size(),
+                "NONE",
+                null,
                 null,
                 null
         );
@@ -172,6 +177,7 @@ public class AssignmentApplicationService {
                     sessionCount
             );
             AtomicInteger completed = new AtomicInteger(0);
+            List<AssignmentRunRepository.SessionRow> pendingRows = new ArrayList<>();
             AssignmentResult result = planner.plan(input, session -> {
                 try {
                     AssignmentSummary summary = new AssignmentSummary(
@@ -179,17 +185,28 @@ public class AssignmentApplicationService {
                             session.roomAssignments().size(),
                             session.hallMonitorAssignments().size()
                     );
-                    repository.upsertSession(
-                            assignmentId,
+                    pendingRows.add(new AssignmentRunRepository.SessionRow(
                             session.sessionNo(),
                             jsonService.toJson(session),
                             jsonService.toJson(summary)
-                    );
-                    repository.updateRunStatus(assignmentId, "RUNNING", "Dang xu ly", completed.incrementAndGet());
+                    ));
+                    if (pendingRows.size() >= SESSION_DB_BATCH_SIZE) {
+                        repository.upsertSessionsBatch(assignmentId, pendingRows);
+                        pendingRows.clear();
+                    }
+                    int done = completed.incrementAndGet();
+                    if (done % SESSION_DB_BATCH_SIZE == 0 || done == input.sessionCount()) {
+                        repository.updateRunStatus(assignmentId, "RUNNING", "Dang xu ly", done);
+                    }
                 } catch (SQLException exception) {
                     throw new IllegalStateException(exception);
                 }
             });
+            if (!pendingRows.isEmpty()) {
+                repository.upsertSessionsBatch(assignmentId, pendingRows);
+                pendingRows.clear();
+            }
+            repository.updateRunStatus(assignmentId, "RUNNING", "Dang xu ly", completed.get());
 
             List<String> sessionJsonRows = repository.findSessionJsonByAssignmentId(assignmentId);
             List<SessionAssignment> persistedSessions = new ArrayList<>();
@@ -200,26 +217,6 @@ public class AssignmentApplicationService {
             String sessionsJson = jsonService.toJson(persistedSessions);
             String summaryJson = jsonService.toJson(summaries);
 
-            if ("SUCCESS".equals(result.status())) {
-                AssignmentResult exportResult = new AssignmentResult("SUCCESS", result.message(), persistedSessions);
-                byte[] invigilatorWorkbook = exportService.createInvigilatorWorkbookBytes(exportResult);
-                byte[] monitorWorkbook = exportService.createMonitorWorkbookBytes(exportResult);
-                repository.upsertFile(
-                        assignmentId,
-                        FILE_ROLE_OUTPUT_INVIGILATORS,
-                        "DANHSACH_PHANCONG.xlsx",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        invigilatorWorkbook
-                );
-                repository.upsertFile(
-                        assignmentId,
-                        FILE_ROLE_OUTPUT_MONITORS,
-                        "DANHSACH_GIAMSAT.xlsx",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        monitorWorkbook
-                );
-            }
-
             repository.completeRun(
                     assignmentId,
                     result.status(),
@@ -228,12 +225,65 @@ public class AssignmentApplicationService {
                     sessionsJson,
                     summaryJson
             );
+
+            if ("SUCCESS".equals(result.status())) {
+                repository.updateOutputStatus(assignmentId, "GENERATING", null);
+                executorService.submit(() -> generateOutputFilesAsync(assignmentId, persistedSessions, result.message()));
+            } else {
+                repository.updateOutputStatus(assignmentId, "NONE", null);
+            }
         } catch (Exception exception) {
             try {
                 repository.updateRunStatus(assignmentId, "FAILED", exception.getMessage(), 0);
+                repository.updateOutputStatus(assignmentId, "FAILED", exception.getMessage());
             } catch (SQLException ignored) {
                 // Ignore secondary failures in background worker.
             }
+        }
+    }
+
+    private void generateOutputFilesAsync(String assignmentId, List<SessionAssignment> persistedSessions, String message) {
+        Path invFile = null;
+        Path monFile = null;
+        try {
+            Path outputRoot = storageRoot.resolve("output-cache").resolve(assignmentId);
+            Files.createDirectories(outputRoot);
+            invFile = outputRoot.resolve("DANHSACH_PHANCONG.xlsx");
+            monFile = outputRoot.resolve("DANHSACH_GIAMSAT.xlsx");
+
+            AssignmentResult exportResult = new AssignmentResult("SUCCESS", message, persistedSessions);
+            exportService.writeInvigilatorWorkbook(invFile, exportResult);
+            exportService.writeMonitorWorkbook(monFile, exportResult);
+
+            try (InputStream invStream = Files.newInputStream(invFile);
+                 InputStream monStream = Files.newInputStream(monFile)) {
+                repository.upsertFileFromStream(
+                        assignmentId,
+                        FILE_ROLE_OUTPUT_INVIGILATORS,
+                        "DANHSACH_PHANCONG.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        invStream,
+                        Files.size(invFile)
+                );
+                repository.upsertFileFromStream(
+                        assignmentId,
+                        FILE_ROLE_OUTPUT_MONITORS,
+                        "DANHSACH_GIAMSAT.xlsx",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        monStream,
+                        Files.size(monFile)
+                );
+            }
+            repository.updateOutputStatus(assignmentId, "READY", null);
+        } catch (Exception exception) {
+            try {
+                repository.updateOutputStatus(assignmentId, "FAILED", formatErrorMessage(exception));
+            } catch (SQLException ignored) {
+                // Ignore secondary failures in output worker.
+            }
+        } finally {
+            deleteQuietly(invFile);
+            deleteQuietly(monFile);
         }
     }
 
@@ -262,5 +312,24 @@ public class AssignmentApplicationService {
                         session.hallMonitorAssignments().size()
                 ))
                 .toList();
+    }
+
+    private void deleteQuietly(Path path) {
+        if (path == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            // Ignore cleanup errors.
+        }
+    }
+
+    private String formatErrorMessage(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) {
+            return exception.getClass().getSimpleName();
+        }
+        return exception.getClass().getSimpleName() + ": " + message;
     }
 }

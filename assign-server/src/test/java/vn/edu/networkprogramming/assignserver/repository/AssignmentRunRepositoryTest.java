@@ -28,6 +28,8 @@ class AssignmentRunRepositoryTest {
                 1,
                 2,
                 2,
+                "FAILED",
+                "Loi xuat file",
                 null,
                 null
         );
