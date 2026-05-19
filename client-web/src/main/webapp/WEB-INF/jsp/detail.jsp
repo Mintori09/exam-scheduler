@@ -17,23 +17,21 @@
 <div class="card">
     <p><a href="${pageContext.request.contextPath}/assignments">Quay lại</a></p>
     <h1>Chi tiết lần chạy ${detail.run.assignmentId}</h1>
-    <p>Trạng thái: ${detail.run.status}</p>
-    <p>Xuất file: ${detail.run.outputStatus}</p>
+    <p>Trạng thái: <span id="run-status">${detail.run.status}</span></p>
+    <p>Xuất file: <span id="run-output-status">${detail.run.outputStatus}</span></p>
     <c:if test="${not empty detail.run.outputError}">
-        <p>Lỗi xuất file: ${detail.run.outputError}</p>
+        <p id="run-output-error">Lỗi xuất file: ${detail.run.outputError}</p>
     </c:if>
-    <p>Tiến độ: ${detail.run.completedSessionCount}/${detail.run.sessionCount}</p>
-    <p>Thông điệp: ${detail.run.message}</p>
-    <p>Thời gian: ${detail.run.createdAt}</p>
-    <c:if test="${detail.run.status == 'RUNNING'}">
-        <p>Đang xử lý... trang sẽ tự tải lại sau 3 giây.</p>
-    </c:if>
-    <c:if test="${detail.run.outputStatus == 'READY' && detail.invigilatorFileAvailable}">
-        <p><a class="button" href="${pageContext.request.contextPath}/assignments/${detail.run.assignmentId}/downloads/invigilators">Tải DANHSACH_PHANCONG.xlsx</a></p>
-    </c:if>
-    <c:if test="${detail.run.outputStatus == 'READY' && detail.monitorFileAvailable}">
-        <p><a class="button" href="${pageContext.request.contextPath}/assignments/${detail.run.assignmentId}/downloads/monitors">Tải DANHSACH_GIAMSAT.xlsx</a></p>
-    </c:if>
+    <p>Tiến độ: <span id="run-progress">${detail.run.completedSessionCount}/${detail.run.sessionCount}</span></p>
+    <p>Thông điệp: <span id="run-message">${detail.run.message}</span></p>
+    <p>Thời gian: ${detail.run.createdAtDisplay} (UTC+7)</p>
+    <p id="live-note"></p>
+    <div id="download-links">
+        <c:if test="${detail.run.status == 'SUCCESS'}">
+            <p><a class="button" href="${pageContext.request.contextPath}/assignments/${detail.run.assignmentId}/downloads/invigilators">Tải DANHSACH_PHANCONG.xlsx</a></p>
+            <p><a class="button" href="${pageContext.request.contextPath}/assignments/${detail.run.assignmentId}/downloads/monitors">Tải DANHSACH_GIAMSAT.xlsx</a></p>
+        </c:if>
+    </div>
 </div>
 
 <div class="card">
@@ -47,7 +45,7 @@
             <th>Xem</th>
         </tr>
         </thead>
-        <tbody>
+        <tbody id="session-summary-body">
         <c:forEach items="${detail.sessionSummaries}" var="session">
             <tr>
                 <td>${session.sessionNo}</td>
@@ -59,12 +57,106 @@
         </tbody>
     </table>
 </div>
-<c:if test="${detail.run.status == 'RUNNING' || detail.run.outputStatus == 'GENERATING'}">
-    <script>
-        setTimeout(function() {
-            window.location.reload();
-        }, 3000);
-    </script>
-</c:if>
+<script>
+    (function() {
+        var assignmentId = "${detail.run.assignmentId}";
+        var initialStatus = "${detail.run.status}";
+        var initialOutputStatus = "${detail.run.outputStatus}";
+        var shouldTrackLive = initialStatus === "RUNNING" || initialOutputStatus === "GENERATING";
+        if (!shouldTrackLive) {
+            document.getElementById("live-note").textContent = "";
+            return;
+        }
+        var sseUrl = "http://localhost:8081/assign-server/api/assignments/" + encodeURIComponent(assignmentId) + "/events";
+        var note = document.getElementById("live-note");
+        var statusEl = document.getElementById("run-status");
+        var outputStatusEl = document.getElementById("run-output-status");
+        var progressEl = document.getElementById("run-progress");
+        var messageEl = document.getElementById("run-message");
+        var outputErrorEl = document.getElementById("run-output-error");
+        var downloadLinksEl = document.getElementById("download-links");
+        var summaryBodyEl = document.getElementById("session-summary-body");
+        var terminalReached = false;
+        var es = new EventSource(sseUrl);
+
+        note.textContent = "Đang theo dõi realtime...";
+        es.addEventListener("detail", function(event) {
+            var detail = JSON.parse(event.data);
+            var run = detail.run;
+            renderRun(run);
+            renderDownloadLinks(run);
+            renderSummaries(detail.sessionSummaries || [], run.assignmentId);
+            if (run.status !== "RUNNING" && run.outputStatus !== "GENERATING") {
+                terminalReached = true;
+                es.close();
+                if (run.status === "FAILED") {
+                    note.textContent = "Đã thất bại, không tiếp tục theo dõi realtime.";
+                    return;
+                }
+                note.textContent = "Đã hoàn tất. Đang tải lại trang...";
+                setTimeout(function() { window.location.reload(); }, 700);
+            }
+        });
+        es.onerror = function() {
+            if (terminalReached) {
+                return;
+            }
+            note.textContent = "Mất kết nối realtime, sẽ tải lại sau 10 giây.";
+            es.close();
+            setTimeout(function() { window.location.reload(); }, 10000);
+        };
+
+        function renderRun(run) {
+            statusEl.textContent = run.status;
+            outputStatusEl.textContent = run.outputStatus;
+            progressEl.textContent = run.completedSessionCount + "/" + run.sessionCount;
+            messageEl.textContent = run.message || "";
+            if (run.outputError) {
+                if (outputErrorEl) {
+                    outputErrorEl.textContent = "Lỗi xuất file: " + run.outputError;
+                } else {
+                    outputStatusEl.insertAdjacentHTML("afterend", '<p id="run-output-error">Lỗi xuất file: ' + escapeHtml(run.outputError) + '</p>');
+                    outputErrorEl = document.getElementById("run-output-error");
+                }
+            } else if (outputErrorEl) {
+                outputErrorEl.remove();
+                outputErrorEl = null;
+            }
+        }
+
+        function renderDownloadLinks(run) {
+            if (run.status !== "SUCCESS") {
+                downloadLinksEl.innerHTML = "";
+                return;
+            }
+            downloadLinksEl.innerHTML = [
+                '<p><a class="button" href="/assignments/' + encodeURIComponent(run.assignmentId) + '/downloads/invigilators">Tải DANHSACH_PHANCONG.xlsx</a></p>',
+                '<p><a class="button" href="/assignments/' + encodeURIComponent(run.assignmentId) + '/downloads/monitors">Tải DANHSACH_GIAMSAT.xlsx</a></p>'
+            ].join("");
+        }
+
+        function renderSummaries(summaries, assignmentId) {
+            summaryBodyEl.innerHTML = summaries.map(function(session) {
+                return [
+                    "<tr>",
+                    "<td>" + escapeHtml(String(session.sessionNo)) + "</td>",
+                    "<td>" + escapeHtml(String(session.roomAssignmentCount)) + "</td>",
+                    "<td>" + escapeHtml(String(session.hallMonitorCount)) + "</td>",
+                    '<td><a href="/assignments/' + encodeURIComponent(assignmentId) + '/sessions/' + encodeURIComponent(String(session.sessionNo)) + '">Chi tiết</a></td>',
+                    "</tr>"
+                ].join("");
+            }).join("");
+        }
+
+        function escapeHtml(value) {
+            return value
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#39;");
+        }
+    })();
+</script>
 </body>
 </html>

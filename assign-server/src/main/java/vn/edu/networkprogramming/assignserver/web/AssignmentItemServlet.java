@@ -1,11 +1,15 @@
 package vn.edu.networkprogramming.assignserver.web;
 
+import jakarta.servlet.AsyncContext;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.Objects;
+import vn.edu.networkprogramming.assignserver.model.AssignmentDetail;
 
-@WebServlet("/api/assignments/*")
+@WebServlet(value = "/api/assignments/*", asyncSupported = true)
 public class AssignmentItemServlet extends BaseJsonServlet {
 
     @Override
@@ -22,6 +26,10 @@ public class AssignmentItemServlet extends BaseJsonServlet {
             }
             if (parts.length == 3 && "downloads".equals(parts[1])) {
                 handleDownload(resp, parts[0], parts[2]);
+                return;
+            }
+            if (parts.length == 2 && "events".equals(parts[1])) {
+                handleEvents(req, resp, parts[0]);
                 return;
             }
             writeJson(resp, HttpServletResponse.SC_NOT_FOUND, new ApiErrorResponse("FAILED", "API khong ton tai"));
@@ -49,26 +57,25 @@ public class AssignmentItemServlet extends BaseJsonServlet {
     }
 
     private void handleDownload(HttpServletResponse resp, String assignmentId, String type) throws Exception {
+        if (!"invigilators".equals(type) && !"monitors".equals(type)) {
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, new ApiErrorResponse("FAILED", "Loai file khong hop le"));
+            return;
+        }
         var detail = assignmentService().getAssignmentDetail(assignmentId);
         if (detail == null) {
             writeJson(resp, HttpServletResponse.SC_NOT_FOUND, new ApiErrorResponse("FAILED", "Khong tim thay assignmentId"));
             return;
         }
-        String outputStatus = detail.run().outputStatus();
-        if (!"READY".equals(outputStatus)) {
+        if (!"SUCCESS".equals(detail.run().status())) {
             writeJson(resp, HttpServletResponse.SC_CONFLICT, new ApiErrorResponse(
                     "FAILED",
-                    "File ket qua chua san sang. outputStatus=" + outputStatus
+                    "Ket qua chua san sang de xuat file. status=" + detail.run().status()
             ));
             return;
         }
         var file = "invigilators".equals(type)
                 ? assignmentService().getInvigilatorFile(assignmentId)
                 : "monitors".equals(type) ? assignmentService().getMonitorFile(assignmentId) : null;
-        if (!"invigilators".equals(type) && !"monitors".equals(type)) {
-            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, new ApiErrorResponse("FAILED", "Loai file khong hop le"));
-            return;
-        }
         if (file == null) {
             writeJson(resp, HttpServletResponse.SC_NOT_FOUND, new ApiErrorResponse("FAILED", "Khong tim thay file ket qua"));
             return;
@@ -77,6 +84,57 @@ public class AssignmentItemServlet extends BaseJsonServlet {
         resp.setContentType(file.mimeType());
         resp.setHeader("Content-Disposition", "attachment; filename=\"" + file.fileName() + "\"");
         resp.getOutputStream().write(file.content());
+    }
+
+    private void handleEvents(HttpServletRequest req, HttpServletResponse resp, String assignmentId) throws IOException {
+        resp.setStatus(HttpServletResponse.SC_OK);
+        resp.setContentType("text/event-stream;charset=UTF-8");
+        resp.setHeader("Cache-Control", "no-cache");
+        resp.setHeader("Connection", "keep-alive");
+        resp.setHeader("Access-Control-Allow-Origin", "http://localhost:8080");
+
+        AsyncContext asyncContext = req.startAsync();
+        asyncContext.setTimeout(0);
+        asyncContext.start(() -> streamEvents(asyncContext, assignmentId));
+    }
+
+    private void streamEvents(AsyncContext asyncContext, String assignmentId) {
+        String lastFingerprint = null;
+        try {
+            HttpServletResponse response = (HttpServletResponse) asyncContext.getResponse();
+            PrintWriter writer = response.getWriter();
+            while (true) {
+                AssignmentDetail detail = assignmentService().getAssignmentDetail(assignmentId);
+                if (detail == null) {
+                    writer.write("event: error\n");
+                    writer.write("data: {\"message\":\"Khong tim thay assignmentId\"}\n\n");
+                    writer.flush();
+                    break;
+                }
+                String fingerprint = detail.run().status()
+                        + "|" + detail.run().outputStatus()
+                        + "|" + detail.run().completedSessionCount()
+                        + "|" + detail.sessionSummaries().size()
+                        + "|" + detail.invigilatorFileAvailable()
+                        + "|" + detail.monitorFileAvailable()
+                        + "|" + detail.run().message();
+                if (!Objects.equals(lastFingerprint, fingerprint)) {
+                    String json = objectMapper().writeValueAsString(detail);
+                    writer.write("event: detail\n");
+                    writer.write("data: " + json + "\n\n");
+                    writer.flush();
+                    lastFingerprint = fingerprint;
+                }
+                if (!"RUNNING".equals(detail.run().status()) && !"GENERATING".equals(detail.run().outputStatus())) {
+                    break;
+                }
+                Thread.sleep(1000L);
+            }
+        } catch (Exception ignored) {
+            // Client disconnected or stream ended.
+        } finally {
+            asyncContext.complete();
+        }
     }
 
     private String[] pathParts(HttpServletRequest request) {

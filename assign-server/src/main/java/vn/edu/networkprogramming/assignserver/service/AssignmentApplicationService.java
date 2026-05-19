@@ -121,6 +121,10 @@ public class AssignmentApplicationService {
         return repository.findAll();
     }
 
+    public AssignmentRun findRunById(String assignmentId) throws SQLException {
+        return repository.findById(assignmentId);
+    }
+
     public AssignmentDetail getAssignmentDetail(String assignmentId) throws SQLException {
         StoredAssignmentRun stored = repository.findStoredById(assignmentId);
         if (stored == null) {
@@ -162,10 +166,12 @@ public class AssignmentApplicationService {
     }
 
     public AssignmentFileContent getInvigilatorFile(String assignmentId) throws SQLException {
+        ensureOutputFilesGeneratedOnDemand(assignmentId);
         return repository.findFile(assignmentId, FILE_ROLE_OUTPUT_INVIGILATORS);
     }
 
     public AssignmentFileContent getMonitorFile(String assignmentId) throws SQLException {
+        ensureOutputFilesGeneratedOnDemand(assignmentId);
         return repository.findFile(assignmentId, FILE_ROLE_OUTPUT_MONITORS);
     }
 
@@ -206,7 +212,7 @@ public class AssignmentApplicationService {
                 repository.upsertSessionsBatch(assignmentId, pendingRows);
                 pendingRows.clear();
             }
-            repository.updateRunStatus(assignmentId, "RUNNING", "Dang xu ly", completed.get());
+            repository.updateRunStatus(assignmentId, "RUNNING", "Dang tong hop ket qua", completed.get());
 
             List<String> sessionJsonRows = repository.findSessionJsonByAssignmentId(assignmentId);
             List<SessionAssignment> persistedSessions = new ArrayList<>();
@@ -214,8 +220,10 @@ public class AssignmentApplicationService {
                 persistedSessions.add(jsonService.fromJson(sessionJson, SessionAssignment.class));
             }
             List<AssignmentSummary> summaries = buildSummaries(persistedSessions);
-            String sessionsJson = jsonService.toJson(persistedSessions);
-            String summaryJson = jsonService.toJson(summaries);
+            // Large aggregate JSON payloads are no longer needed because
+            // session/summary rows are persisted incrementally in assignment_sessions.
+            String sessionsJson = "[]";
+            String summaryJson = "[]";
 
             repository.completeRun(
                     assignmentId,
@@ -226,10 +234,7 @@ public class AssignmentApplicationService {
                     summaryJson
             );
 
-            if ("SUCCESS".equals(result.status())) {
-                repository.updateOutputStatus(assignmentId, "GENERATING", null);
-                executorService.submit(() -> generateOutputFilesAsync(assignmentId, persistedSessions, result.message()));
-            } else {
+            if (!"SUCCESS".equals(result.status())) {
                 repository.updateOutputStatus(assignmentId, "NONE", null);
             }
         } catch (Exception exception) {
@@ -284,6 +289,50 @@ public class AssignmentApplicationService {
         } finally {
             deleteQuietly(invFile);
             deleteQuietly(monFile);
+        }
+    }
+
+    private void ensureOutputFilesGeneratedOnDemand(String assignmentId) throws SQLException {
+        AssignmentRun run = repository.findById(assignmentId);
+        if (run == null) {
+            return;
+        }
+        if (!"SUCCESS".equals(run.status())) {
+            return;
+        }
+        boolean hasInv = repository.findFile(assignmentId, FILE_ROLE_OUTPUT_INVIGILATORS) != null;
+        boolean hasMon = repository.findFile(assignmentId, FILE_ROLE_OUTPUT_MONITORS) != null;
+        if (hasInv && hasMon) {
+            if (!"READY".equals(run.outputStatus())) {
+                repository.updateOutputStatus(assignmentId, "READY", null);
+            }
+            return;
+        }
+        synchronized (assignmentId.intern()) {
+            AssignmentRun latest = repository.findById(assignmentId);
+            if (latest == null || !"SUCCESS".equals(latest.status())) {
+                return;
+            }
+            boolean nowHasInv = repository.findFile(assignmentId, FILE_ROLE_OUTPUT_INVIGILATORS) != null;
+            boolean nowHasMon = repository.findFile(assignmentId, FILE_ROLE_OUTPUT_MONITORS) != null;
+            if (nowHasInv && nowHasMon) {
+                if (!"READY".equals(latest.outputStatus())) {
+                    repository.updateOutputStatus(assignmentId, "READY", null);
+                }
+                return;
+            }
+            repository.updateOutputStatus(assignmentId, "GENERATING", null);
+            try {
+                List<String> sessionJsonRows = repository.findSessionJsonByAssignmentId(assignmentId);
+                List<SessionAssignment> sessions = new ArrayList<>();
+                for (String sessionJson : sessionJsonRows) {
+                    sessions.add(jsonService.fromJson(sessionJson, SessionAssignment.class));
+                }
+                generateOutputFilesAsync(assignmentId, sessions, latest.message());
+            } catch (Exception exception) {
+                repository.updateOutputStatus(assignmentId, "FAILED", formatErrorMessage(exception));
+                throw new SQLException("Khong tao duoc file output", exception);
+            }
         }
     }
 

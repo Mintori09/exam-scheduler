@@ -62,7 +62,7 @@
         <tbody>
         <c:forEach items="${runs}" var="run">
             <tr>
-                <td>${run.createdAt}</td>
+                <td>${run.createdAtDisplay}</td>
                 <td><a href="${pageContext.request.contextPath}/assignments/${run.assignmentId}">${run.assignmentId}</a></td>
                 <td>${run.status}</td>
                 <td>${run.outputStatus}</td>

@@ -53,9 +53,11 @@ class AssignmentApplicationServiceIntegrationTest {
         assertEquals(sessionCount, run.completedSessionCount());
         assertEquals(1200, run.roomCount());
         assertEquals(2500, run.staffCount());
-        waitUntilOutputReady(repository, run.assignmentId());
-        var invigilatorFile = repository.findFile(run.assignmentId(), AssignmentApplicationService.FILE_ROLE_OUTPUT_INVIGILATORS);
-        var monitorFile = repository.findFile(run.assignmentId(), AssignmentApplicationService.FILE_ROLE_OUTPUT_MONITORS);
+        AssignmentRun beforeDownload = repository.findById(run.assignmentId());
+        assertNotNull(beforeDownload);
+        assertEquals("NONE", beforeDownload.outputStatus());
+        var invigilatorFile = service.getInvigilatorFile(run.assignmentId());
+        var monitorFile = service.getMonitorFile(run.assignmentId());
         assertNotNull(invigilatorFile);
         assertNotNull(monitorFile);
         assertWorkbookHasSessionSheetsAndData(invigilatorFile.content(), sessionCount);
@@ -102,9 +104,11 @@ class AssignmentApplicationServiceIntegrationTest {
         assertEquals(sessionCount, run.completedSessionCount());
         assertEquals(1200, run.roomCount());
         assertEquals(2500, run.staffCount());
-        waitUntilOutputReady(repository, run.assignmentId());
-        var invigilatorFile = repository.findFile(run.assignmentId(), AssignmentApplicationService.FILE_ROLE_OUTPUT_INVIGILATORS);
-        var monitorFile = repository.findFile(run.assignmentId(), AssignmentApplicationService.FILE_ROLE_OUTPUT_MONITORS);
+        AssignmentRun beforeDownload = repository.findById(run.assignmentId());
+        assertNotNull(beforeDownload);
+        assertEquals("NONE", beforeDownload.outputStatus());
+        var invigilatorFile = service.getInvigilatorFile(run.assignmentId());
+        var monitorFile = service.getMonitorFile(run.assignmentId());
         assertNotNull(invigilatorFile);
         assertNotNull(monitorFile);
         assertWorkbookHasSessionSheetsAndData(invigilatorFile.content(), sessionCount);
@@ -132,22 +136,6 @@ class AssignmentApplicationServiceIntegrationTest {
         deleteDirectoryIfExists(testOutputRoot);
         Files.createDirectories(testOutputRoot);
         return testOutputRoot;
-    }
-
-    private void waitUntilOutputReady(AssignmentRunRepository repository, String assignmentId) throws Exception {
-        long deadline = System.currentTimeMillis() + 60_000L;
-        while (System.currentTimeMillis() < deadline) {
-            AssignmentRun run = repository.findById(assignmentId);
-            assertNotNull(run);
-            if ("READY".equals(run.outputStatus())) {
-                return;
-            }
-            if ("FAILED".equals(run.outputStatus())) {
-                throw new AssertionError("Output generation failed: " + run.outputError());
-            }
-            Thread.sleep(100L);
-        }
-        throw new AssertionError("Timed out waiting for output READY");
     }
 
     private void deleteDirectoryIfExists(Path directory) throws Exception {
