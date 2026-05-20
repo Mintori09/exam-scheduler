@@ -38,7 +38,7 @@ public class AssignmentWorkbookExportService {
                 Sheet sheet = workbook.createSheet("Ca " + session.sessionNo());
                 var header1 = sheet.createRow(0);
                 header1.createCell(0).setCellValue("STT");
-                header1.createCell(1).setCellValue("Mã GV");
+                header1.createCell(1).setCellValue("Mã cán bộ");
                 header1.createCell(2).setCellValue("Họ và tên");
                 header1.createCell(3).setCellValue("Giám thị 1");
                 header1.createCell(4).setCellValue("Giám thị 2");
@@ -64,7 +64,7 @@ public class AssignmentWorkbookExportService {
                 Sheet sheet = workbook.createSheet("Ca " + session.sessionNo());
                 var header = sheet.createRow(0);
                 header.createCell(0).setCellValue("STT");
-                header.createCell(1).setCellValue("Mã GV");
+                header.createCell(1).setCellValue("Mã cán bộ");
                 header.createCell(2).setCellValue("Họ và tên");
                 header.createCell(3).setCellValue("Phòng thi được giám sát");
                 int rowIndex = 1;

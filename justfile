@@ -1,34 +1,19 @@
-set shell := ["bash", "-cu"]
+set shell := ["powershell", "-NoProfile", "-Command"]
 
 default:
     @just --list
 
 backend:
-    cd assign-server && mvn -q clean compile && mvn jetty:run -Djetty.http.port=8081
+    $envFile = Join-Path (Get-Location) '.env.backend'; if (Test-Path $envFile) { Get-Content $envFile | ForEach-Object { $line = $_.Trim(); if ($line -and -not $line.StartsWith('#')) { $parts = $line -split '=', 2; if ($parts.Length -eq 2 -and -not [string]::IsNullOrWhiteSpace($parts[0])) { [System.Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim().Trim('"'), 'Process') } } } }; $bindHost = if ($env:BIND_HOST) { $env:BIND_HOST } else { "0.0.0.0" }; $backendPort = if ($env:BACKEND_PORT) { $env:BACKEND_PORT } else { "8081" }; $dataDir = if ($env:ASSIGN_SERVER_DATA_DIR) { $env:ASSIGN_SERVER_DATA_DIR } else { "assign-server-data" }; Set-Location assign-server; & mvn '-q' 'clean' 'compile' "-DdataDir=$dataDir"; & mvn 'jetty:run' "-Djetty.http.host=$bindHost" "-Djetty.http.port=$backendPort" "-DdataDir=$dataDir"
 
 frontend:
-    cd client-web && mvn -q clean compile && mvn jetty:run -Djetty.http.port=8080
+    $envFile = Join-Path (Get-Location) '.env.frontend'; if (Test-Path $envFile) { Get-Content $envFile | ForEach-Object { $line = $_.Trim(); if ($line -and -not $line.StartsWith('#')) { $parts = $line -split '=', 2; if ($parts.Length -eq 2 -and -not [string]::IsNullOrWhiteSpace($parts[0])) { [System.Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim().Trim('"'), 'Process') } } } }; $bindHost = if ($env:BIND_HOST) { $env:BIND_HOST } else { "0.0.0.0" }; $frontendPort = if ($env:FRONTEND_PORT) { $env:FRONTEND_PORT } else { "8080" }; $backendPort = if ($env:BACKEND_PORT) { $env:BACKEND_PORT } else { "8081" }; $serverBaseUrl = if ($env:SERVER_BASE_URL) { $env:SERVER_BASE_URL } else { "http://localhost:$backendPort/assign-server" }; Set-Location client-web; & mvn '-q' 'clean' 'compile' "-DserverBaseUrl=$serverBaseUrl"; & mvn 'jetty:run' "-Djetty.http.host=$bindHost" "-Djetty.http.port=$frontendPort" "-DserverBaseUrl=$serverBaseUrl"
 
 test:
-    cd assign-server && mvn test
+    $envFile = Join-Path (Get-Location) '.env.backend'; if (Test-Path $envFile) { Get-Content $envFile | ForEach-Object { $line = $_.Trim(); if ($line -and -not $line.StartsWith('#')) { $parts = $line -split '=', 2; if ($parts.Length -eq 2 -and -not [string]::IsNullOrWhiteSpace($parts[0])) { [System.Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim().Trim('"'), 'Process') } } } }; Set-Location assign-server; mvn test
 
 dev:
-    @if ! command -v watchexec >/dev/null 2>&1; then \
-      echo "Missing 'watchexec'. Install it first: cargo install watchexec-cli (or your package manager)."; \
-      exit 1; \
-    fi
-    watchexec \
-      --restart \
-      --watch assign-server/src \
-      --watch client-web/src \
-      --watch pom.xml \
-      --watch assign-server/pom.xml \
-      --watch client-web/pom.xml \
-      --exts java,jsp,xml,properties \
-      -- "bash -lc 'trap \"kill 0\" EXIT INT TERM; \
-        (cd assign-server && mvn -q clean compile && mvn jetty:run -Djetty.http.port=8081) & \
-        (cd client-web && mvn -q clean compile && mvn jetty:run -Djetty.http.port=8080) & \
-        wait'"
+    @('.env.backend', '.env.frontend') | ForEach-Object { $envFile = Join-Path (Get-Location) $_; if (Test-Path $envFile) { Get-Content $envFile | ForEach-Object { $line = $_.Trim(); if ($line -and -not $line.StartsWith('#')) { $parts = $line -split '=', 2; if ($parts.Length -eq 2 -and -not [string]::IsNullOrWhiteSpace($parts[0])) { [System.Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim().Trim('"'), 'Process') } } } } }; if (-not (Get-Command watchexec -ErrorAction SilentlyContinue)) { throw "Missing 'watchexec'. Install it first." }; $bindHost = if ($env:BIND_HOST) { $env:BIND_HOST } else { "0.0.0.0" }; $backendPort = if ($env:BACKEND_PORT) { $env:BACKEND_PORT } else { "8081" }; $frontendPort = if ($env:FRONTEND_PORT) { $env:FRONTEND_PORT } else { "8080" }; $serverBaseUrl = if ($env:SERVER_BASE_URL) { $env:SERVER_BASE_URL } else { "http://localhost:$backendPort/assign-server" }; $dataDir = if ($env:ASSIGN_SERVER_DATA_DIR) { $env:ASSIGN_SERVER_DATA_DIR } else { "assign-server-data" }; watchexec --restart --watch assign-server/src --watch client-web/src --watch pom.xml --watch assign-server/pom.xml --watch client-web/pom.xml --exts java,jsp,xml,properties -- "& { Start-Job { Set-Location assign-server; & mvn '-q' 'clean' 'compile' ""-DdataDir=$dataDir""; & mvn 'jetty:run' ""-Djetty.http.host=$bindHost"" ""-Djetty.http.port=$backendPort"" ""-DdataDir=$dataDir"" } | Out-Null; Start-Job { Set-Location client-web; & mvn '-q' 'clean' 'compile' ""-DserverBaseUrl=$serverBaseUrl""; & mvn 'jetty:run' ""-Djetty.http.host=$bindHost"" ""-Djetty.http.port=$frontendPort"" ""-DserverBaseUrl=$serverBaseUrl"" } | Out-Null; Wait-Job * }"
 
 deploy-server:
     ./scripts/deploy-server-lan.sh

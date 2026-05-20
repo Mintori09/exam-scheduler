@@ -6,6 +6,23 @@ target/
 
 # Node.js
 node_modules/
+.npm-cache/
+
+# Test results (Playwright)
+test-results/
+
+# Runtime data (DB + runs)
+assign-server-data/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.settings/
+.project
+.classpath
+
+# OS
 
 # Test results (Playwright)
 test-results/
@@ -29,4 +46,5 @@ Thumbs.db
 *.log
 
 # Environment
-.env
+.env.backend
+.env.frontend

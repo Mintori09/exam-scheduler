@@ -6,26 +6,27 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.http.HttpResponse;
 
-@WebServlet("/assignments/*")
-public class AssignmentDetailServlet extends BasePageServlet {
+@WebServlet("/branches/*")
+public class BranchDetailServlet extends BasePageServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         try {
             String[] parts = pathParts(req);
             if (parts.length == 1) {
-                req.setAttribute("detail", assignServerClient().getAssignmentDetail(parts[0]));
+                req.setAttribute("detail", assignServerClient().getBranchDetail(parts[0]));
+                req.setAttribute("preview", assignServerClient().previewBranch(parts[0]));
                 forward("detail.jsp", req, resp);
                 return;
             }
             if (parts.length == 3 && "sessions".equals(parts[1])) {
-                req.setAttribute("session", assignServerClient().getSessionDetail(parts[0], Integer.parseInt(parts[2])));
-                req.setAttribute("assignmentId", parts[0]);
+                req.setAttribute("sessionRecord", assignServerClient().getBranchSessionDetail(parts[0], Integer.parseInt(parts[2])));
+                req.setAttribute("branchId", parts[0]);
                 forward("session.jsp", req, resp);
                 return;
             }
             if (parts.length == 3 && "downloads".equals(parts[1])) {
-                HttpResponse<byte[]> response = assignServerClient().download(parts[0], parts[2]);
+                HttpResponse<byte[]> response = assignServerClient().downloadBranchFile(parts[0], parts[2]);
                 if (response.statusCode() / 100 != 2) {
                     throw new IOException("Khong tai duoc file");
                 }
@@ -39,7 +40,9 @@ public class AssignmentDetailServlet extends BasePageServlet {
         } catch (Exception exception) {
             req.setAttribute("error", exception.getMessage());
             try {
-                req.setAttribute("runs", assignServerClient().listAssignments());
+                req.setAttribute("staffDatasets", assignServerClient().listStaffDatasets(false));
+                req.setAttribute("roomDatasets", assignServerClient().listRoomDatasets(false));
+                req.setAttribute("branches", assignServerClient().listBranches(false));
                 forward("home.jsp", req, resp);
             } catch (Exception nested) {
                 throw new IOException(nested);

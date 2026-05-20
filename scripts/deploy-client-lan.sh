@@ -4,6 +4,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+if [[ -f .env.frontend ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env.frontend
+  set +a
+fi
+
+BIND_HOST="${BIND_HOST:-0.0.0.0}"
+BACKEND_PORT="${BACKEND_PORT:-8081}"
+FRONTEND_PORT="${FRONTEND_PORT:-8080}"
+
 detect_lan_ip() {
   if [[ -n "${LAN_IP:-}" ]]; then
     echo "$LAN_IP"
@@ -29,15 +40,15 @@ detect_lan_ip() {
 }
 
 LAN_IP_VALUE="$(detect_lan_ip)"
-SERVER_BASE_URL="${SERVER_BASE_URL:-http://${LAN_IP_VALUE}:8081/assign-server}"
+SERVER_BASE_URL="${SERVER_BASE_URL:-http://${LAN_IP_VALUE}:${BACKEND_PORT}/assign-server}"
 
 echo "Using backend: ${SERVER_BASE_URL}"
 echo "Building client-web..."
 mvn -q -f client-web/pom.xml clean compile -DserverBaseUrl="${SERVER_BASE_URL}"
 
-echo "Starting client-web on 0.0.0.0:8080"
+echo "Starting client-web on ${BIND_HOST}:${FRONTEND_PORT}"
 exec mvn -f client-web/pom.xml jetty:run \
-  -Djetty.http.host=0.0.0.0 \
-  -Djetty.host=0.0.0.0 \
-  -Djetty.http.port=8080 \
+  -Djetty.http.host="${BIND_HOST}" \
+  -Djetty.host="${BIND_HOST}" \
+  -Djetty.http.port="${FRONTEND_PORT}" \
   -DserverBaseUrl="${SERVER_BASE_URL}"

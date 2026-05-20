@@ -11,9 +11,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 import vn.edu.networkprogramming.clientweb.model.ApiErrorResponse;
-import vn.edu.networkprogramming.clientweb.model.AssignmentDetailView;
-import vn.edu.networkprogramming.clientweb.model.AssignmentRunView;
-import vn.edu.networkprogramming.clientweb.model.SessionAssignmentView;
+import vn.edu.networkprogramming.clientweb.model.BranchDetailView;
+import vn.edu.networkprogramming.clientweb.model.BranchPreviewView;
+import vn.edu.networkprogramming.clientweb.model.BranchSessionRecordView;
+import vn.edu.networkprogramming.clientweb.model.DatasetUploadResultView;
+import vn.edu.networkprogramming.clientweb.model.RoomDatasetView;
+import vn.edu.networkprogramming.clientweb.model.ScheduleBranchView;
+import vn.edu.networkprogramming.clientweb.model.StaffDatasetView;
 
 public class AssignServerClient {
 
@@ -27,65 +31,184 @@ public class AssignServerClient {
         this.serverBaseUrl = serverBaseUrl.endsWith("/") ? serverBaseUrl.substring(0, serverBaseUrl.length() - 1) : serverBaseUrl;
     }
 
-    public AssignmentRunView createAssignment(String staffFilename, byte[] staffContent, String roomFilename, byte[] roomContent, int sessionCount)
+    public DatasetUploadResultView<StaffDatasetView> uploadStaffDataset(String name, String filename, byte[] content)
             throws IOException, InterruptedException {
-        String boundary = "----Boundary" + UUID.randomUUID();
-        byte[] body = MultipartBodyBuilder.create(boundary)
-                .addFile("staffFile", staffFilename, staffContent)
-                .addFile("roomFile", roomFilename, roomContent)
-                .addField("sessionCount", String.valueOf(sessionCount))
-                .build();
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(serverBaseUrl + "/api/assignments"))
-                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
-                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
-                .build();
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        return parseResponse(response, AssignmentRunView.class);
+        return postFile("/api/staff-datasets", name, filename, content, StaffDatasetView.class);
     }
 
-    public List<AssignmentRunView> listAssignments() throws IOException, InterruptedException {
+    public DatasetUploadResultView<RoomDatasetView> uploadRoomDataset(String name, String filename, byte[] content)
+            throws IOException, InterruptedException {
+        return postFile("/api/room-datasets", name, filename, content, RoomDatasetView.class);
+    }
+
+    public List<StaffDatasetView> listStaffDatasets(boolean includeArchived) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(serverBaseUrl + "/api/assignments"))
+                .uri(URI.create(serverBaseUrl + "/api/staff-datasets?includeArchived=" + includeArchived))
                 .GET()
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         ensureSuccess(response);
-        try {
-            return List.of(objectMapper.readValue(response.body(), AssignmentRunView[].class));
-        } catch (IOException exception) {
-            String body = response.body();
-            String preview = body == null ? "" : body.substring(0, Math.min(body.length(), 200));
-            throw new IOException("Khong the doc danh sach assignment tu assign-server. HTTP "
-                    + response.statusCode() + ", body preview: " + preview, exception);
-        }
+        return List.of(objectMapper.readValue(response.body(), StaffDatasetView[].class));
     }
 
-    public AssignmentDetailView getAssignmentDetail(String assignmentId) throws IOException, InterruptedException {
+    public List<RoomDatasetView> listRoomDatasets(boolean includeArchived) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(serverBaseUrl + "/api/assignments/" + encode(assignmentId)))
+                .uri(URI.create(serverBaseUrl + "/api/room-datasets?includeArchived=" + includeArchived))
                 .GET()
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        return parseResponse(response, AssignmentDetailView.class);
+        ensureSuccess(response);
+        return List.of(objectMapper.readValue(response.body(), RoomDatasetView[].class));
     }
 
-    public SessionAssignmentView getSessionDetail(String assignmentId, int sessionNo) throws IOException, InterruptedException {
+    public void archiveStaffDataset(String datasetId) throws IOException, InterruptedException {
+        postNoContent("/api/staff-datasets/" + encode(datasetId) + "/archive");
+    }
+
+    public void renameStaffDataset(String datasetId, String name) throws IOException, InterruptedException {
+        postNoContent("/api/staff-datasets/" + encode(datasetId) + "/rename", "name=" + encodeValue(name));
+    }
+
+    public void restoreStaffDataset(String datasetId) throws IOException, InterruptedException {
+        postNoContent("/api/staff-datasets/" + encode(datasetId) + "/restore");
+    }
+
+    public void archiveRoomDataset(String datasetId) throws IOException, InterruptedException {
+        postNoContent("/api/room-datasets/" + encode(datasetId) + "/archive");
+    }
+
+    public void renameRoomDataset(String datasetId, String name) throws IOException, InterruptedException {
+        postNoContent("/api/room-datasets/" + encode(datasetId) + "/rename", "name=" + encodeValue(name));
+    }
+
+    public void restoreRoomDataset(String datasetId) throws IOException, InterruptedException {
+        postNoContent("/api/room-datasets/" + encode(datasetId) + "/restore");
+    }
+
+    public ScheduleBranchView createBranch(
+            String name,
+            String staffDatasetId,
+            String roomDatasetId,
+            int requestedStaffCount,
+            int requestedRoomCount,
+            int sessionCount
+    )
+            throws IOException, InterruptedException {
+        String body = "name=" + encodeValue(name == null ? "" : name)
+                + "&staffDatasetId=" + encodeValue(staffDatasetId)
+                + "&roomDatasetId=" + encodeValue(roomDatasetId)
+                + "&requestedStaffCount=" + requestedStaffCount
+                + "&requestedRoomCount=" + requestedRoomCount
+                + "&sessionCount=" + sessionCount;
+        return postForm("/api/branches", body, ScheduleBranchView.class);
+    }
+
+    public ScheduleBranchView createNextSession(String branchId, int sessionCount) throws IOException, InterruptedException {
+        return postForm(
+                "/api/branches/" + encode(branchId) + "/sessions",
+                "sessionCount=" + sessionCount,
+                ScheduleBranchView.class
+        );
+    }
+
+    public ScheduleBranchView resetBranch(String branchId, String name) throws IOException, InterruptedException {
+        String body = "name=" + encodeValue(name == null ? "" : name);
+        return postForm("/api/branches/" + encode(branchId) + "/reset", body, ScheduleBranchView.class);
+    }
+
+    public void archiveBranch(String branchId) throws IOException, InterruptedException {
+        postNoContent("/api/branches/" + encode(branchId) + "/archive");
+    }
+
+    public void renameBranch(String branchId, String name) throws IOException, InterruptedException {
+        postNoContent("/api/branches/" + encode(branchId) + "/rename", "name=" + encodeValue(name));
+    }
+
+    public void restoreBranch(String branchId) throws IOException, InterruptedException {
+        postNoContent("/api/branches/" + encode(branchId) + "/restore");
+    }
+
+    public List<ScheduleBranchView> listBranches(boolean includeArchived) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(serverBaseUrl + "/api/assignments/" + encode(assignmentId) + "/sessions/" + sessionNo))
+                .uri(URI.create(serverBaseUrl + "/api/branches?includeArchived=" + includeArchived))
                 .GET()
                 .build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        return parseResponse(response, SessionAssignmentView.class);
+        ensureSuccess(response);
+        return List.of(objectMapper.readValue(response.body(), ScheduleBranchView[].class));
     }
 
-    public HttpResponse<byte[]> download(String assignmentId, String type) throws IOException, InterruptedException {
+    public BranchDetailView getBranchDetail(String branchId) throws IOException, InterruptedException {
         HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(serverBaseUrl + "/api/assignments/" + encode(assignmentId) + "/downloads/" + type))
+                .uri(URI.create(serverBaseUrl + "/api/branches/" + encode(branchId)))
+                .GET()
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return parseResponse(response, BranchDetailView.class);
+    }
+
+    public BranchSessionRecordView getBranchSessionDetail(String branchId, int sessionNo) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(serverBaseUrl + "/api/branches/" + encode(branchId) + "/sessions/" + sessionNo))
+                .GET()
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return parseResponse(response, BranchSessionRecordView.class);
+    }
+
+    public BranchPreviewView previewBranch(String branchId) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(serverBaseUrl + "/api/branches/" + encode(branchId) + "/preview"))
+                .GET()
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return parseResponse(response, BranchPreviewView.class);
+    }
+
+    public HttpResponse<byte[]> downloadBranchFile(String branchId, String type) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(serverBaseUrl + "/api/branches/" + encode(branchId) + "/downloads/" + type))
                 .GET()
                 .build();
         return httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+    }
+
+    private <T> DatasetUploadResultView<T> postFile(String path, String name, String filename, byte[] content, Class<T> datasetType)
+            throws IOException, InterruptedException {
+        String boundary = "----Boundary" + UUID.randomUUID();
+        byte[] body = MultipartBodyBuilder.create(boundary)
+                .addField("name", name == null ? "" : name)
+                .addFile("file", filename, content)
+                .build();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(serverBaseUrl + path))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        ensureSuccess(response);
+        return objectMapper.readValue(
+                response.body(),
+                objectMapper.getTypeFactory().constructParametricType(DatasetUploadResultView.class, datasetType)
+        );
+    }
+
+    private void postNoContent(String path) throws IOException, InterruptedException {
+        postNoContent(path, "");
+    }
+
+    private void postNoContent(String path, String body) throws IOException, InterruptedException {
+        postForm(path, body, ApiErrorResponse.class);
+    }
+
+    private <T> T postForm(String path, String body, Class<T> type) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(serverBaseUrl + path))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body, StandardCharsets.UTF_8))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return parseResponse(response, type);
     }
 
     private <T> T parseResponse(HttpResponse<String> response, Class<T> type) throws IOException {
@@ -110,5 +233,9 @@ public class AssignServerClient {
 
     private String encode(String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private String encodeValue(String value) {
+        return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
     }
 }

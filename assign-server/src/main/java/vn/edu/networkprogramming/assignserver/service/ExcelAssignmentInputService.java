@@ -5,7 +5,6 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -32,10 +31,10 @@ public class ExcelAssignmentInputService {
         return new AssignmentInput(staffRecords, roomRecords, sessionCount);
     }
 
-    private List<StaffRecord> parseStaff(InputStream inputStream) throws IOException {
+    public List<StaffRecord> parseStaff(InputStream inputStream) throws IOException {
         try (XSSFWorkbook workbook = new XSSFWorkbook(inputStream)) {
             var sheet = workbook.getSheetAt(0);
-            requireHeaders(sheet.getRow(0), List.of("STT", "Họ và tên", "Ngày sinh", "Mã cán bộ", "Đơn vị công tác"));
+            ensureHasColumns(sheet.getRow(0), 5);
             List<StaffRecord> result = new ArrayList<>();
             Set<String> seenCodes = new HashSet<>();
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
@@ -44,9 +43,9 @@ public class ExcelAssignmentInputService {
                     continue;
                 }
                 int stt = Integer.parseInt(ExcelCellValueReader.read(row.getCell(0)));
-                String fullName = required(ExcelCellValueReader.read(row.getCell(1)), "Ho va ten");
-                String birthDate = required(ExcelCellValueReader.read(row.getCell(2)), "Ngay sinh");
-                String staffCode = required(ExcelCellValueReader.read(row.getCell(3)), "Ma can bo");
+                String staffCode = required(ExcelCellValueReader.read(row.getCell(1)), "Ma can bo");
+                String fullName = required(ExcelCellValueReader.read(row.getCell(2)), "Ho va ten");
+                String birthDate = required(ExcelCellValueReader.read(row.getCell(3)), "Ngay sinh");
                 String department = required(ExcelCellValueReader.read(row.getCell(4)), "Don vi cong tac");
                 if (!seenCodes.add(staffCode)) {
                     throw new ValidationException("Trung ma can bo: " + staffCode);
@@ -61,10 +60,10 @@ public class ExcelAssignmentInputService {
         }
     }
 
-    private List<RoomRecord> parseRooms(InputStream inputStream) throws IOException {
+    public List<RoomRecord> parseRooms(InputStream inputStream) throws IOException {
         try (XSSFWorkbook workbook = new XSSFWorkbook(inputStream)) {
             var sheet = workbook.getSheetAt(0);
-            requireHeaders(sheet.getRow(0), List.of("STT", "Phòng thi", "Địa điểm"));
+            ensureHasColumns(sheet.getRow(0), 3);
             List<RoomRecord> result = new ArrayList<>();
             Set<String> seenRooms = new HashSet<>();
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
@@ -88,15 +87,13 @@ public class ExcelAssignmentInputService {
         }
     }
 
-    private void requireHeaders(Row row, List<String> expectedHeaders) {
+    private void ensureHasColumns(Row row, int expectedColumns) {
         if (row == null) {
             throw new ValidationException("Thieu dong tieu de");
         }
-        for (int i = 0; i < expectedHeaders.size(); i++) {
-            String actual = normalize(ExcelCellValueReader.read(row.getCell(i)));
-            String expected = normalize(expectedHeaders.get(i));
-            if (!expected.equals(actual)) {
-                throw new ValidationException("Sai cau truc tieu de Excel");
+        for (int index = 0; index < expectedColumns; index++) {
+            if (row.getCell(index) == null) {
+                throw new ValidationException("Sai cau truc cot Excel");
             }
         }
     }
@@ -117,7 +114,4 @@ public class ExcelAssignmentInputService {
         return value.trim();
     }
 
-    private String normalize(String value) {
-        return value.trim().toLowerCase(Locale.ROOT);
-    }
 }

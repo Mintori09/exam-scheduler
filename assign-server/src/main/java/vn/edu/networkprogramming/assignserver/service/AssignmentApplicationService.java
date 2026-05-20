@@ -2,49 +2,53 @@ package vn.edu.networkprogramming.assignserver.service;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicInteger;
-import vn.edu.networkprogramming.assignserver.model.AssignmentDetail;
 import vn.edu.networkprogramming.assignserver.model.AssignmentFileContent;
-import vn.edu.networkprogramming.assignserver.model.AssignmentInput;
 import vn.edu.networkprogramming.assignserver.model.AssignmentResult;
-import vn.edu.networkprogramming.assignserver.model.AssignmentRun;
 import vn.edu.networkprogramming.assignserver.model.AssignmentSummary;
+import vn.edu.networkprogramming.assignserver.model.BranchDetail;
+import vn.edu.networkprogramming.assignserver.model.BranchPreview;
+import vn.edu.networkprogramming.assignserver.model.BranchSessionRecord;
+import vn.edu.networkprogramming.assignserver.model.DatasetUploadResult;
+import vn.edu.networkprogramming.assignserver.model.NextSessionPlan;
+import vn.edu.networkprogramming.assignserver.model.RoomDataset;
+import vn.edu.networkprogramming.assignserver.model.RoomRecord;
+import vn.edu.networkprogramming.assignserver.model.ScheduleBranch;
 import vn.edu.networkprogramming.assignserver.model.SessionAssignment;
-import vn.edu.networkprogramming.assignserver.model.StoredAssignmentRun;
-import vn.edu.networkprogramming.assignserver.repository.AssignmentRunRepository;
+import vn.edu.networkprogramming.assignserver.model.StaffDataset;
+import vn.edu.networkprogramming.assignserver.model.StaffRecord;
+import vn.edu.networkprogramming.assignserver.repository.SchedulingRepository;
+import vn.edu.networkprogramming.assignserver.service.exception.ValidationException;
 
 public class AssignmentApplicationService {
 
-    public static final String FILE_ROLE_INPUT_STAFF = "input_staff";
-    public static final String FILE_ROLE_INPUT_ROOM = "input_room";
-    public static final String FILE_ROLE_OUTPUT_INVIGILATORS = "output_invigilators";
-    public static final String FILE_ROLE_OUTPUT_MONITORS = "output_monitors";
+    private static final DateTimeFormatter DEFAULT_NAME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.of("Asia/Ho_Chi_Minh"));
 
     private final ExcelAssignmentInputService inputService;
     private final AssignmentPlanner planner;
     private final AssignmentWorkbookExportService exportService;
-    private final AssignmentRunRepository repository;
+    private final SchedulingRepository repository;
     private final JsonService jsonService;
     private final Path storageRoot;
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
-    private static final int SESSION_DB_BATCH_SIZE = 10;
 
     public AssignmentApplicationService(
             ExcelAssignmentInputService inputService,
             AssignmentPlanner planner,
             AssignmentWorkbookExportService exportService,
-            AssignmentRunRepository repository,
+            SchedulingRepository repository,
             JsonService jsonService,
             Path storageRoot
     ) {
@@ -56,329 +60,467 @@ public class AssignmentApplicationService {
         this.storageRoot = storageRoot;
     }
 
-    public AssignmentRun createAssignmentAsync(
-            String staffFilename,
-            byte[] staffContent,
-            String roomFilename,
-            byte[] roomContent,
-            int sessionCount
-    ) throws IOException, SQLException {
-        AssignmentInput input = inputService.parse(
-                new ByteArrayInputStream(staffContent),
-                new ByteArrayInputStream(roomContent),
-                sessionCount
+    public DatasetUploadResult<StaffDataset> uploadStaffDataset(String name, String fileName, byte[] content) throws IOException, SQLException {
+        List<StaffRecord> records = inputService.parseStaff(new ByteArrayInputStream(content));
+        String hash = sha256(content);
+        StaffDataset existing = repository.findStaffDatasetByHash(hash);
+        if (existing != null) {
+            if (existing.archived()) {
+                repository.unarchiveStaffDataset(existing.datasetId());
+            }
+            return new DatasetUploadResult<>(repository.findStaffDatasetById(existing.datasetId()), true);
+        }
+        String datasetId = UUID.randomUUID().toString();
+        repository.createStaffDataset(
+                datasetId,
+                defaultDatasetName(name, fileName, "Staff"),
+                hash,
+                normalizeFileName(fileName, "CANBOCOITHI.xlsx"),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                content,
+                records.size()
         );
-        String assignmentId = UUID.randomUUID().toString();
+        return new DatasetUploadResult<>(repository.findStaffDatasetById(datasetId), false);
+    }
+
+    public DatasetUploadResult<RoomDataset> uploadRoomDataset(String name, String fileName, byte[] content) throws IOException, SQLException {
+        List<RoomRecord> records = inputService.parseRooms(new ByteArrayInputStream(content));
+        String hash = sha256(content);
+        RoomDataset existing = repository.findRoomDatasetByHash(hash);
+        if (existing != null) {
+            if (existing.archived()) {
+                repository.unarchiveRoomDataset(existing.datasetId());
+            }
+            return new DatasetUploadResult<>(repository.findRoomDatasetById(existing.datasetId()), true);
+        }
+        String datasetId = UUID.randomUUID().toString();
+        repository.createRoomDataset(
+                datasetId,
+                defaultDatasetName(name, fileName, "Room"),
+                hash,
+                normalizeFileName(fileName, "PHONGTHI.xlsx"),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                content,
+                records.size()
+        );
+        return new DatasetUploadResult<>(repository.findRoomDatasetById(datasetId), false);
+    }
+
+    public List<StaffDataset> findAllStaffDatasets(boolean includeArchived) throws SQLException {
+        return repository.findAllStaffDatasets(includeArchived);
+    }
+
+    public List<RoomDataset> findAllRoomDatasets(boolean includeArchived) throws SQLException {
+        return repository.findAllRoomDatasets(includeArchived);
+    }
+
+    public void archiveStaffDataset(String datasetId) throws SQLException {
+        repository.archiveStaffDataset(datasetId);
+    }
+
+    public void renameStaffDataset(String datasetId, String name) throws SQLException {
+        if (name == null || name.isBlank()) {
+            throw new ValidationException("Tên bộ dữ liệu cán bộ không được để trống");
+        }
+        repository.renameStaffDataset(datasetId, name.trim());
+    }
+
+    public void unarchiveStaffDataset(String datasetId) throws SQLException {
+        repository.unarchiveStaffDataset(datasetId);
+    }
+
+    public void archiveRoomDataset(String datasetId) throws SQLException {
+        repository.archiveRoomDataset(datasetId);
+    }
+
+    public void renameRoomDataset(String datasetId, String name) throws SQLException {
+        if (name == null || name.isBlank()) {
+            throw new ValidationException("Tên bộ dữ liệu phòng không được để trống");
+        }
+        repository.renameRoomDataset(datasetId, name.trim());
+    }
+
+    public void unarchiveRoomDataset(String datasetId) throws SQLException {
+        repository.unarchiveRoomDataset(datasetId);
+    }
+
+    public ScheduleBranch createBranchAndFirstSession(
+            String name,
+            String staffDatasetId,
+            String roomDatasetId,
+            int requestedStaffCount,
+            int requestedRoomCount
+    ) throws Exception {
+        return createBranchAndSessions(name, staffDatasetId, roomDatasetId, requestedStaffCount, requestedRoomCount, 1);
+    }
+
+    public ScheduleBranch createBranchAndSessions(
+            String name,
+            String staffDatasetId,
+            String roomDatasetId,
+            int requestedStaffCount,
+            int requestedRoomCount,
+            int sessionCount
+    ) throws Exception {
+        StaffDataset staffDataset = requireActiveStaffDataset(staffDatasetId);
+        RoomDataset roomDataset = requireActiveRoomDataset(roomDatasetId);
+        validateRequestedCounts(staffDataset.staffCount(), roomDataset.roomCount(), requestedStaffCount, requestedRoomCount);
+        validateSessionCount(sessionCount);
+
         Instant now = Instant.now();
-        AssignmentRun run = new AssignmentRun(
-                assignmentId,
+        String branchId = UUID.randomUUID().toString();
+        ScheduleBranch branch = new ScheduleBranch(
+                branchId,
+                defaultBranchName(name),
                 "RUNNING",
-                "Dang xu ly",
+                "Đang tạo ca 1",
                 now,
                 now,
-                input.sessionCount(),
+                staffDataset.datasetId(),
+                staffDataset.name(),
+                roomDataset.datasetId(),
+                roomDataset.name(),
+                requestedStaffCount,
+                requestedRoomCount,
+                1,
                 0,
-                input.roomRecords().size(),
-                input.staffRecords().size(),
+                false,
                 "NONE",
-                null,
-                null,
                 null
         );
-        repository.createRun(run);
-        repository.upsertFile(
-                assignmentId,
-                FILE_ROLE_INPUT_STAFF,
-                staffFilename == null || staffFilename.isBlank() ? "CANBOCOITHI.XLSX" : staffFilename,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                staffContent
-        );
-        repository.upsertFile(
-                assignmentId,
-                FILE_ROLE_INPUT_ROOM,
-                roomFilename == null || roomFilename.isBlank() ? "PHONGTHI.XLSX" : roomFilename,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                roomContent
-        );
-
-        executorService.submit(() -> processAssignment(assignmentId, staffContent, roomContent, sessionCount));
-        return run;
-    }
-
-    public AssignmentRun createAssignment(java.io.InputStream staffStream, java.io.InputStream roomStream, int sessionCount) throws IOException, SQLException {
-        byte[] staffBytes = staffStream.readAllBytes();
-        byte[] roomBytes = roomStream.readAllBytes();
-        AssignmentRun run = createAssignmentAsync("CANBOCOITHI.XLSX", staffBytes, "PHONGTHI.XLSX", roomBytes, sessionCount);
-        waitUntilFinished(run.assignmentId());
-        AssignmentRun latest = repository.findById(run.assignmentId());
-        if (latest == null) {
-            throw new IOException("Khong tim thay ket qua sau khi xu ly");
+        repository.createBranch(branch);
+        try {
+            appendNextSessions(branchId, sessionCount);
+        } catch (Exception exception) {
+            repository.archiveBranch(branchId);
+            throw exception;
         }
-        return latest;
+        return repository.findBranchById(branchId);
     }
 
-    public List<AssignmentRun> findAllRuns() throws SQLException {
-        return repository.findAll();
+    public ScheduleBranch appendNextSession(String branchId) throws Exception {
+        return appendNextSessions(branchId, 1);
     }
 
-    public AssignmentRun findRunById(String assignmentId) throws SQLException {
-        return repository.findById(assignmentId);
+    public ScheduleBranch appendNextSessions(String branchId, int sessionCount) throws Exception {
+        ScheduleBranch branch = requireActiveBranch(branchId);
+        validateSessionCount(sessionCount);
+        int createdInRequest = 0;
+        for (int index = 0; index < sessionCount; index++) {
+            List<StaffRecord> staffPool = loadStaffPool(branch.staffDatasetId());
+            List<RoomRecord> roomPool = loadRoomPool(branch.roomDatasetId());
+            List<BranchSessionRecord> history = findBranchSessions(branchId);
+            long seedBase = Instant.now().toEpochMilli() + history.size() * 104_729L + index * 8191L;
+            try {
+                NextSessionPlan plan = planner.planNextSession(
+                        staffPool,
+                        roomPool,
+                        branch.requestedStaffCount(),
+                        branch.requestedRoomCount(),
+                        history,
+                        seedBase
+                );
+
+                AssignmentSummary summary = new AssignmentSummary(
+                        plan.session().sessionNo(),
+                        plan.session().roomAssignments().size(),
+                        plan.session().hallMonitorAssignments().size()
+                );
+                repository.insertBranchSession(
+                        branchId,
+                        plan.session().sessionNo(),
+                        plan.selectionSeed(),
+                        jsonService.toJson(plan.selectedStaffCodes()),
+                        jsonService.toJson(plan.selectedRoomNames()),
+                        jsonService.toJson(plan.session()),
+                        jsonService.toJson(summary)
+                );
+                repository.updateBranchAfterSession(
+                        branchId,
+                        "SUCCESS",
+                        "Da tao den ca " + plan.session().sessionNo(),
+                        plan.session().sessionNo() + 1,
+                        history.size() + 1
+                );
+                createdInRequest++;
+                branch = repository.findBranchById(branchId);
+            } catch (ValidationException exception) {
+                if (createdInRequest > 0) {
+                    throw new ValidationException("Đã tạo được " + createdInRequest + "/" + sessionCount
+                            + " ca. " + exception.getMessage());
+                }
+                throw exception;
+            }
+        }
+        repository.updateBranchOutputStatus(branchId, "NONE", null);
+        return repository.findBranchById(branchId);
     }
 
-    public AssignmentDetail getAssignmentDetail(String assignmentId) throws SQLException {
-        StoredAssignmentRun stored = repository.findStoredById(assignmentId);
-        if (stored == null) {
+    public ScheduleBranch resetBranch(String branchId, String overrideName) throws Exception {
+        ScheduleBranch source = requireBranch(branchId);
+        return createBranchAndFirstSession(
+                overrideName == null || overrideName.isBlank() ? source.name() + " (reset)" : overrideName,
+                source.staffDatasetId(),
+                source.roomDatasetId(),
+                source.requestedStaffCount(),
+                source.requestedRoomCount()
+        );
+    }
+
+    public List<ScheduleBranch> findAllBranches(boolean includeArchived) throws SQLException {
+        return repository.findAllBranches(includeArchived);
+    }
+
+    public ScheduleBranch findBranchById(String branchId) throws SQLException {
+        return repository.findBranchById(branchId);
+    }
+
+    public void archiveBranch(String branchId) throws SQLException {
+        repository.archiveBranch(branchId);
+    }
+
+    public void renameBranch(String branchId, String name) throws SQLException {
+        if (name == null || name.isBlank()) {
+            throw new ValidationException("Tên nhánh phân công không được để trống");
+        }
+        requireBranch(branchId);
+        repository.renameBranch(branchId, name.trim());
+    }
+
+    public void unarchiveBranch(String branchId) throws SQLException {
+        repository.unarchiveBranch(branchId);
+    }
+
+    public BranchDetail getBranchDetail(String branchId) throws Exception {
+        ScheduleBranch branch = repository.findBranchById(branchId);
+        if (branch == null) {
             return null;
         }
-        List<String> summaryJsonRows = repository.findSummaryJsonByAssignmentId(assignmentId);
-        List<AssignmentSummary> summaries = new ArrayList<>();
-        for (String summaryJson : summaryJsonRows) {
-            summaries.add(jsonService.fromJson(summaryJson, AssignmentSummary.class));
-        }
-        if (summaries.isEmpty() && stored.summaryJson() != null && !stored.summaryJson().isBlank()) {
-            AssignmentSummary[] fallback = jsonService.fromJson(stored.summaryJson(), AssignmentSummary[].class);
-            summaries.addAll(Arrays.asList(fallback));
-        }
-        return new AssignmentDetail(
-                stored.run(),
-                summaries,
-                repository.findFile(assignmentId, FILE_ROLE_OUTPUT_INVIGILATORS) != null,
-                repository.findFile(assignmentId, FILE_ROLE_OUTPUT_MONITORS) != null
+        return new BranchDetail(
+                branch,
+                findBranchSessions(branchId),
+                repository.findBranchFile(branchId, SchedulingRepository.FILE_ROLE_OUTPUT_INVIGILATORS) != null,
+                repository.findBranchFile(branchId, SchedulingRepository.FILE_ROLE_OUTPUT_MONITORS) != null
         );
     }
 
-    public SessionAssignment getSessionDetail(String assignmentId, int sessionNo) throws SQLException {
-        String sessionJson = repository.findSessionJsonByAssignmentIdAndSessionNo(assignmentId, sessionNo);
-        if (sessionJson != null) {
-            return jsonService.fromJson(sessionJson, SessionAssignment.class);
-        }
-        StoredAssignmentRun stored = repository.findStoredById(assignmentId);
-        if (stored == null || stored.sessionsJson() == null || stored.sessionsJson().isBlank()) {
-            return null;
-        }
-        SessionAssignment[] sessions = jsonService.fromJson(stored.sessionsJson(), SessionAssignment[].class);
-        for (SessionAssignment session : sessions) {
-            if (session.sessionNo() == sessionNo) {
-                return session;
-            }
-        }
-        return null;
+    public BranchSessionRecord getBranchSessionDetail(String branchId, int sessionNo) throws Exception {
+        SchedulingRepository.BranchSessionRow row = repository.findBranchSessionRow(branchId, sessionNo);
+        return row == null ? null : mapBranchSession(row);
     }
 
-    public AssignmentFileContent getInvigilatorFile(String assignmentId) throws SQLException {
-        ensureOutputFilesGeneratedOnDemand(assignmentId);
-        return repository.findFile(assignmentId, FILE_ROLE_OUTPUT_INVIGILATORS);
+    public BranchPreview previewBranch(String branchId) throws Exception {
+        ScheduleBranch branch = requireActiveBranch(branchId);
+        List<StaffRecord> staffPool = loadStaffPool(branch.staffDatasetId());
+        List<RoomRecord> roomPool = loadRoomPool(branch.roomDatasetId());
+        List<BranchSessionRecord> history = findBranchSessions(branchId);
+        boolean canCreate = planner.canCreateNextSession(
+                staffPool,
+                roomPool,
+                branch.requestedStaffCount(),
+                branch.requestedRoomCount(),
+                history,
+                Instant.now().toEpochMilli()
+        );
+        String message = canCreate
+                ? "Có thể tạo thêm ca thi"
+                : "Không thể tạo thêm ca thi. Hãy làm lại nhánh hoặc chọn bộ dữ liệu khác";
+        return new BranchPreview(
+                canCreate,
+                branch.nextSessionNo(),
+                staffPool.size(),
+                roomPool.size(),
+                planner.usedPairCount(history),
+                planner.constrainedStaffCount(history),
+                message
+        );
     }
 
-    public AssignmentFileContent getMonitorFile(String assignmentId) throws SQLException {
-        ensureOutputFilesGeneratedOnDemand(assignmentId);
-        return repository.findFile(assignmentId, FILE_ROLE_OUTPUT_MONITORS);
+    public AssignmentFileContent getInvigilatorFile(String branchId) throws Exception {
+        ensureOutputFilesGenerated(branchId);
+        return repository.findBranchFile(branchId, SchedulingRepository.FILE_ROLE_OUTPUT_INVIGILATORS);
     }
 
-    private void processAssignment(String assignmentId, byte[] staffContent, byte[] roomContent, int sessionCount) {
+    public AssignmentFileContent getMonitorFile(String branchId) throws Exception {
+        ensureOutputFilesGenerated(branchId);
+        return repository.findBranchFile(branchId, SchedulingRepository.FILE_ROLE_OUTPUT_MONITORS);
+    }
+
+    public List<BranchSessionRecord> findBranchSessions(String branchId) throws Exception {
+        List<SchedulingRepository.BranchSessionRow> rows = repository.findBranchSessionRows(branchId);
+        List<BranchSessionRecord> result = new ArrayList<>();
+        for (SchedulingRepository.BranchSessionRow row : rows) {
+            result.add(mapBranchSession(row));
+        }
+        return result;
+    }
+
+    private BranchSessionRecord mapBranchSession(SchedulingRepository.BranchSessionRow row) throws Exception {
+        return new BranchSessionRecord(
+                row.branchId(),
+                row.sessionNo(),
+                row.selectionSeed(),
+                jsonService.fromJson(row.selectedStaffCodesJson(), List.class),
+                jsonService.fromJson(row.selectedRoomNamesJson(), List.class),
+                jsonService.fromJson(row.sessionJson(), SessionAssignment.class),
+                jsonService.fromJson(row.summaryJson(), AssignmentSummary.class),
+                row.createdAt()
+        );
+    }
+
+    private void ensureOutputFilesGenerated(String branchId) throws Exception {
+        ScheduleBranch branch = requireBranch(branchId);
+        if (branch.sessionCreatedCount() == 0) {
+            throw new ValidationException("Nhánh này chưa có ca thi để xuất file");
+        }
+        boolean hasInv = repository.findBranchFile(branchId, SchedulingRepository.FILE_ROLE_OUTPUT_INVIGILATORS) != null;
+        boolean hasMon = repository.findBranchFile(branchId, SchedulingRepository.FILE_ROLE_OUTPUT_MONITORS) != null;
+        if (hasInv && hasMon && "READY".equals(branch.outputStatus())) {
+            return;
+        }
+
+        List<BranchSessionRecord> sessions = findBranchSessions(branchId);
+        AssignmentResult exportResult = new AssignmentResult(
+                "SUCCESS",
+                branch.message(),
+                sessions.stream().map(BranchSessionRecord::session).toList()
+        );
+        byte[] invigilatorBytes = exportService.createInvigilatorWorkbookBytes(exportResult);
+        byte[] monitorBytes = exportService.createMonitorWorkbookBytes(exportResult);
+        repository.upsertBranchFile(
+                branchId,
+                SchedulingRepository.FILE_ROLE_OUTPUT_INVIGILATORS,
+                "DANHSACH_PHANCONG.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                invigilatorBytes
+        );
+        repository.upsertBranchFile(
+                branchId,
+                SchedulingRepository.FILE_ROLE_OUTPUT_MONITORS,
+                "DANHSACH_GIAMSAT.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                monitorBytes
+        );
+        repository.updateBranchOutputStatus(branchId, "READY", null);
+        cleanupOutputCache(branchId);
+    }
+
+    private StaffDataset requireActiveStaffDataset(String datasetId) throws SQLException {
+        StaffDataset dataset = repository.findStaffDatasetById(datasetId);
+        if (dataset == null) {
+            throw new ValidationException("Không tìm thấy bộ dữ liệu cán bộ");
+        }
+        if (dataset.archived()) {
+            throw new ValidationException("Bộ dữ liệu cán bộ đang ở trạng thái ẩn");
+        }
+        return dataset;
+    }
+
+    private RoomDataset requireActiveRoomDataset(String datasetId) throws SQLException {
+        RoomDataset dataset = repository.findRoomDatasetById(datasetId);
+        if (dataset == null) {
+            throw new ValidationException("Không tìm thấy bộ dữ liệu phòng");
+        }
+        if (dataset.archived()) {
+            throw new ValidationException("Bộ dữ liệu phòng đang ở trạng thái ẩn");
+        }
+        return dataset;
+    }
+
+    private ScheduleBranch requireActiveBranch(String branchId) throws SQLException {
+        ScheduleBranch branch = requireBranch(branchId);
+        if (branch.archived()) {
+            throw new ValidationException("Nhánh phân công đang ở trạng thái ẩn");
+        }
+        return branch;
+    }
+
+    private ScheduleBranch requireBranch(String branchId) throws SQLException {
+        ScheduleBranch branch = repository.findBranchById(branchId);
+        if (branch == null) {
+            throw new ValidationException("Không tìm thấy nhánh phân công");
+        }
+        return branch;
+    }
+
+    private List<StaffRecord> loadStaffPool(String datasetId) throws IOException, SQLException {
+        byte[] content = repository.findStaffDatasetContent(datasetId);
+        if (content == null) {
+            throw new ValidationException("Không đọc được nội dung bộ dữ liệu cán bộ");
+        }
+        return inputService.parseStaff(new ByteArrayInputStream(content));
+    }
+
+    private List<RoomRecord> loadRoomPool(String datasetId) throws IOException, SQLException {
+        byte[] content = repository.findRoomDatasetContent(datasetId);
+        if (content == null) {
+            throw new ValidationException("Không đọc được nội dung bộ dữ liệu phòng");
+        }
+        return inputService.parseRooms(new ByteArrayInputStream(content));
+    }
+
+    private void validateRequestedCounts(int staffDatasetSize, int roomDatasetSize, int requestedStaffCount, int requestedRoomCount) {
+        if (requestedStaffCount <= 0 || requestedRoomCount <= 0) {
+            throw new ValidationException("Số cán bộ và số phòng phải là số nguyên dương");
+        }
+        if (requestedStaffCount > staffDatasetSize) {
+            throw new ValidationException("Số cán bộ vượt quá dữ liệu hiện có");
+        }
+        if (requestedRoomCount > roomDatasetSize) {
+            throw new ValidationException("Số phòng vượt quá dữ liệu hiện có");
+        }
+        if (requestedStaffCount < requestedRoomCount * 2) {
+            throw new ValidationException("Số cán bộ phải ít nhất gấp đôi số phòng");
+        }
+    }
+
+    private void validateSessionCount(int sessionCount) {
+        if (sessionCount <= 0) {
+            throw new ValidationException("Số ca thi phải là số nguyên dương");
+        }
+    }
+
+    private String defaultDatasetName(String name, String fileName, String prefix) {
+        if (name != null && !name.isBlank()) {
+            return name.trim();
+        }
+        return normalizeFileName(fileName, prefix) + " " + DEFAULT_NAME_FORMATTER.format(Instant.now());
+    }
+
+    private String defaultBranchName(String name) {
+        if (name != null && !name.isBlank()) {
+            return name.trim();
+        }
+        return "Branch " + DEFAULT_NAME_FORMATTER.format(Instant.now());
+    }
+
+    private String normalizeFileName(String fileName, String fallback) {
+        return fileName == null || fileName.isBlank() ? fallback : fileName;
+    }
+
+    private String sha256(byte[] bytes) {
         try {
-            AssignmentInput input = inputService.parse(
-                    new ByteArrayInputStream(staffContent),
-                    new ByteArrayInputStream(roomContent),
-                    sessionCount
-            );
-            AtomicInteger completed = new AtomicInteger(0);
-            List<AssignmentRunRepository.SessionRow> pendingRows = new ArrayList<>();
-            AssignmentResult result = planner.plan(input, session -> {
-                try {
-                    AssignmentSummary summary = new AssignmentSummary(
-                            session.sessionNo(),
-                            session.roomAssignments().size(),
-                            session.hallMonitorAssignments().size()
-                    );
-                    pendingRows.add(new AssignmentRunRepository.SessionRow(
-                            session.sessionNo(),
-                            jsonService.toJson(session),
-                            jsonService.toJson(summary)
-                    ));
-                    if (pendingRows.size() >= SESSION_DB_BATCH_SIZE) {
-                        repository.upsertSessionsBatch(assignmentId, pendingRows);
-                        pendingRows.clear();
-                    }
-                    int done = completed.incrementAndGet();
-                    if (done % SESSION_DB_BATCH_SIZE == 0 || done == input.sessionCount()) {
-                        repository.updateRunStatus(assignmentId, "RUNNING", "Dang xu ly", done);
-                    }
-                } catch (SQLException exception) {
-                    throw new IllegalStateException(exception);
-                }
-            });
-            if (!pendingRows.isEmpty()) {
-                repository.upsertSessionsBatch(assignmentId, pendingRows);
-                pendingRows.clear();
-            }
-            repository.updateRunStatus(assignmentId, "RUNNING", "Dang tong hop ket qua", completed.get());
-
-            List<String> sessionJsonRows = repository.findSessionJsonByAssignmentId(assignmentId);
-            List<SessionAssignment> persistedSessions = new ArrayList<>();
-            for (String sessionJson : sessionJsonRows) {
-                persistedSessions.add(jsonService.fromJson(sessionJson, SessionAssignment.class));
-            }
-            List<AssignmentSummary> summaries = buildSummaries(persistedSessions);
-            // Large aggregate JSON payloads are no longer needed because
-            // session/summary rows are persisted incrementally in assignment_sessions.
-            String sessionsJson = "[]";
-            String summaryJson = "[]";
-
-            repository.completeRun(
-                    assignmentId,
-                    result.status(),
-                    result.message(),
-                    completed.get(),
-                    sessionsJson,
-                    summaryJson
-            );
-
-            if (!"SUCCESS".equals(result.status())) {
-                repository.updateOutputStatus(assignmentId, "NONE", null);
-            }
-        } catch (Exception exception) {
-            try {
-                repository.updateRunStatus(assignmentId, "FAILED", exception.getMessage(), 0);
-                repository.updateOutputStatus(assignmentId, "FAILED", exception.getMessage());
-            } catch (SQLException ignored) {
-                // Ignore secondary failures in background worker.
-            }
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(bytes));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(exception);
         }
     }
 
-    private void generateOutputFilesAsync(String assignmentId, List<SessionAssignment> persistedSessions, String message) {
-        Path invFile = null;
-        Path monFile = null;
+    private void cleanupOutputCache(String branchId) {
         try {
-            Path outputRoot = storageRoot.resolve("output-cache").resolve(assignmentId);
-            Files.createDirectories(outputRoot);
-            invFile = outputRoot.resolve("DANHSACH_PHANCONG.xlsx");
-            monFile = outputRoot.resolve("DANHSACH_GIAMSAT.xlsx");
-
-            AssignmentResult exportResult = new AssignmentResult("SUCCESS", message, persistedSessions);
-            exportService.writeInvigilatorWorkbook(invFile, exportResult);
-            exportService.writeMonitorWorkbook(monFile, exportResult);
-
-            try (InputStream invStream = Files.newInputStream(invFile);
-                 InputStream monStream = Files.newInputStream(monFile)) {
-                repository.upsertFileFromStream(
-                        assignmentId,
-                        FILE_ROLE_OUTPUT_INVIGILATORS,
-                        "DANHSACH_PHANCONG.xlsx",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        invStream,
-                        Files.size(invFile)
-                );
-                repository.upsertFileFromStream(
-                        assignmentId,
-                        FILE_ROLE_OUTPUT_MONITORS,
-                        "DANHSACH_GIAMSAT.xlsx",
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        monStream,
-                        Files.size(monFile)
-                );
+            Path outputRoot = storageRoot.resolve("output-cache").resolve(branchId);
+            if (Files.exists(outputRoot)) {
+                Files.walk(outputRoot)
+                        .sorted((a, b) -> b.compareTo(a))
+                        .forEach(path -> {
+                            try {
+                                Files.deleteIfExists(path);
+                            } catch (IOException ignored) {
+                            }
+                        });
             }
-            repository.updateOutputStatus(assignmentId, "READY", null);
-        } catch (Exception exception) {
-            try {
-                repository.updateOutputStatus(assignmentId, "FAILED", formatErrorMessage(exception));
-            } catch (SQLException ignored) {
-                // Ignore secondary failures in output worker.
-            }
-        } finally {
-            deleteQuietly(invFile);
-            deleteQuietly(monFile);
-        }
-    }
-
-    private void ensureOutputFilesGeneratedOnDemand(String assignmentId) throws SQLException {
-        AssignmentRun run = repository.findById(assignmentId);
-        if (run == null) {
-            return;
-        }
-        if (!"SUCCESS".equals(run.status())) {
-            return;
-        }
-        boolean hasInv = repository.findFile(assignmentId, FILE_ROLE_OUTPUT_INVIGILATORS) != null;
-        boolean hasMon = repository.findFile(assignmentId, FILE_ROLE_OUTPUT_MONITORS) != null;
-        if (hasInv && hasMon) {
-            if (!"READY".equals(run.outputStatus())) {
-                repository.updateOutputStatus(assignmentId, "READY", null);
-            }
-            return;
-        }
-        synchronized (assignmentId.intern()) {
-            AssignmentRun latest = repository.findById(assignmentId);
-            if (latest == null || !"SUCCESS".equals(latest.status())) {
-                return;
-            }
-            boolean nowHasInv = repository.findFile(assignmentId, FILE_ROLE_OUTPUT_INVIGILATORS) != null;
-            boolean nowHasMon = repository.findFile(assignmentId, FILE_ROLE_OUTPUT_MONITORS) != null;
-            if (nowHasInv && nowHasMon) {
-                if (!"READY".equals(latest.outputStatus())) {
-                    repository.updateOutputStatus(assignmentId, "READY", null);
-                }
-                return;
-            }
-            repository.updateOutputStatus(assignmentId, "GENERATING", null);
-            try {
-                List<String> sessionJsonRows = repository.findSessionJsonByAssignmentId(assignmentId);
-                List<SessionAssignment> sessions = new ArrayList<>();
-                for (String sessionJson : sessionJsonRows) {
-                    sessions.add(jsonService.fromJson(sessionJson, SessionAssignment.class));
-                }
-                generateOutputFilesAsync(assignmentId, sessions, latest.message());
-            } catch (Exception exception) {
-                repository.updateOutputStatus(assignmentId, "FAILED", formatErrorMessage(exception));
-                throw new SQLException("Khong tao duoc file output", exception);
-            }
-        }
-    }
-
-    private void waitUntilFinished(String assignmentId) throws SQLException, IOException {
-        long deadline = System.currentTimeMillis() + 600_000L;
-        while (System.currentTimeMillis() < deadline) {
-            AssignmentRun run = repository.findById(assignmentId);
-            if (run != null && !"RUNNING".equals(run.status())) {
-                return;
-            }
-            try {
-                Thread.sleep(250);
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                throw new IOException("Bi ngat khi cho xu ly assignment", exception);
-            }
-        }
-        throw new IOException("Qua thoi gian cho xu ly assignment");
-    }
-
-    private List<AssignmentSummary> buildSummaries(List<SessionAssignment> sessions) {
-        return sessions.stream()
-                .map(session -> new AssignmentSummary(
-                        session.sessionNo(),
-                        session.roomAssignments().size(),
-                        session.hallMonitorAssignments().size()
-                ))
-                .toList();
-    }
-
-    private void deleteQuietly(Path path) {
-        if (path == null) {
-            return;
-        }
-        try {
-            Files.deleteIfExists(path);
         } catch (IOException ignored) {
-            // Ignore cleanup errors.
         }
-    }
-
-    private String formatErrorMessage(Exception exception) {
-        String message = exception.getMessage();
-        if (message == null || message.isBlank()) {
-            return exception.getClass().getSimpleName();
-        }
-        return exception.getClass().getSimpleName() + ": " + message;
     }
 }

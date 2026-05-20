@@ -8,14 +8,15 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import vn.edu.networkprogramming.assignserver.service.exception.ValidationException;
 
-@WebServlet("/api/assignments")
+@WebServlet("/api/room-datasets")
 @MultipartConfig
-public class AssignmentCollectionServlet extends BaseJsonServlet {
+public class RoomDatasetServlet extends BaseJsonServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException {
         try {
-            writeJson(resp, HttpServletResponse.SC_OK, assignmentService().findAllRuns());
+            boolean includeArchived = Boolean.parseBoolean(req.getParameter("includeArchived"));
+            writeJson(resp, HttpServletResponse.SC_OK, assignmentService().findAllRoomDatasets(includeArchived));
         } catch (Exception exception) {
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, new ApiErrorResponse("FAILED", exception.getMessage()));
         }
@@ -24,19 +25,10 @@ public class AssignmentCollectionServlet extends BaseJsonServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws IOException, ServletException {
         try {
-            byte[] staffContent = req.getPart("staffFile").getInputStream().readAllBytes();
-            byte[] roomContent = req.getPart("roomFile").getInputStream().readAllBytes();
-            String staffFileName = req.getPart("staffFile").getSubmittedFileName();
-            String roomFileName = req.getPart("roomFile").getSubmittedFileName();
-            int sessionCount = Integer.parseInt(req.getParameter("sessionCount"));
-            var run = assignmentService().createAssignmentAsync(
-                    staffFileName,
-                    staffContent,
-                    roomFileName,
-                    roomContent,
-                    sessionCount
-            );
-            writeJson(resp, HttpServletResponse.SC_ACCEPTED, run);
+            byte[] content = req.getPart("file").getInputStream().readAllBytes();
+            String fileName = req.getPart("file").getSubmittedFileName();
+            String name = req.getParameter("name");
+            writeJson(resp, HttpServletResponse.SC_OK, assignmentService().uploadRoomDataset(name, fileName, content));
         } catch (ValidationException exception) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, new ApiErrorResponse("FAILED", exception.getMessage()));
         } catch (Exception exception) {
