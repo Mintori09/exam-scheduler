@@ -31,6 +31,12 @@ public class AssignServerClient {
         this.serverBaseUrl = serverBaseUrl.endsWith("/") ? serverBaseUrl.substring(0, serverBaseUrl.length() - 1) : serverBaseUrl;
     }
 
+    private HttpRequest.Builder newRequestBuilder() {
+        return HttpRequest.newBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .header("Accept", "application/json, text/plain, */*");
+    }
+
     public DatasetUploadResultView<StaffDatasetView> uploadStaffDataset(String name, String filename, byte[] content)
             throws IOException, InterruptedException {
         return postFile("/api/staff-datasets", name, filename, content, StaffDatasetView.class);
@@ -42,7 +48,7 @@ public class AssignServerClient {
     }
 
     public List<StaffDatasetView> listStaffDatasets(boolean includeArchived) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + "/api/staff-datasets?includeArchived=" + includeArchived))
                 .GET()
                 .build();
@@ -52,7 +58,7 @@ public class AssignServerClient {
     }
 
     public List<RoomDatasetView> listRoomDatasets(boolean includeArchived) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + "/api/room-datasets?includeArchived=" + includeArchived))
                 .GET()
                 .build();
@@ -129,7 +135,7 @@ public class AssignServerClient {
     }
 
     public List<ScheduleBranchView> listBranches(boolean includeArchived) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + "/api/branches?includeArchived=" + includeArchived))
                 .GET()
                 .build();
@@ -139,7 +145,7 @@ public class AssignServerClient {
     }
 
     public BranchDetailView getBranchDetail(String branchId) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + "/api/branches/" + encode(branchId)))
                 .GET()
                 .build();
@@ -148,7 +154,7 @@ public class AssignServerClient {
     }
 
     public BranchSessionRecordView getBranchSessionDetail(String branchId, int sessionNo) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + "/api/branches/" + encode(branchId) + "/sessions/" + sessionNo))
                 .GET()
                 .build();
@@ -157,7 +163,7 @@ public class AssignServerClient {
     }
 
     public BranchPreviewView previewBranch(String branchId) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + "/api/branches/" + encode(branchId) + "/preview"))
                 .GET()
                 .build();
@@ -166,7 +172,7 @@ public class AssignServerClient {
     }
 
     public HttpResponse<byte[]> downloadBranchFile(String branchId, String type) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + "/api/branches/" + encode(branchId) + "/downloads/" + type))
                 .GET()
                 .build();
@@ -180,7 +186,7 @@ public class AssignServerClient {
                 .addField("name", name == null ? "" : name)
                 .addFile("file", filename, content)
                 .build();
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + path))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
@@ -202,7 +208,7 @@ public class AssignServerClient {
     }
 
     private <T> T postForm(String path, String body, Class<T> type) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + path))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString(body == null ? "" : body, StandardCharsets.UTF_8))
