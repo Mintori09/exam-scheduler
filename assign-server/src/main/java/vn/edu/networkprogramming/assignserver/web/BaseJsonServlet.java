@@ -1,14 +1,30 @@
 package vn.edu.networkprogramming.assignserver.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.ServletException;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.logging.Logger;
 import vn.edu.networkprogramming.assignserver.service.AssignmentApplicationService;
 import vn.edu.networkprogramming.assignserver.service.JsonService;
 
 public abstract class BaseJsonServlet extends HttpServlet {
+
+    private static final Logger LOGGER = Logger.getLogger(BaseJsonServlet.class.getName());
+
+    @Override
+    protected void service(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        super.service(req, resp);
+        int status = resp.getStatus();
+        if (status >= 200 && status < 300) {
+            LOGGER.info(() -> "Client ket noi thanh cong: method=" + req.getMethod()
+                    + ", uri=" + req.getRequestURI()
+                    + ", status=" + status);
+        }
+    }
 
     protected AssignmentApplicationService assignmentService() {
         ServletContext context = getServletContext();

@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
+import java.util.logging.Logger;
 import vn.edu.networkprogramming.assignserver.model.AssignmentFileContent;
 import vn.edu.networkprogramming.assignserver.model.AssignmentResult;
 import vn.edu.networkprogramming.assignserver.model.AssignmentSummary;
@@ -36,6 +37,7 @@ public class AssignmentApplicationService {
 
     private static final DateTimeFormatter DEFAULT_NAME_FORMATTER =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.of("Asia/Ho_Chi_Minh"));
+    private static final Logger LOGGER = Logger.getLogger(AssignmentApplicationService.class.getName());
 
     private final ExcelAssignmentInputService inputService;
     private final AssignmentPlanner planner;
@@ -61,12 +63,15 @@ public class AssignmentApplicationService {
     }
 
     public DatasetUploadResult<StaffDataset> uploadStaffDataset(String name, String fileName, byte[] content) throws IOException, SQLException {
+        LOGGER.info(() -> "Nhan yeu cau upload dataset can bo, fileName=" + fileName + ", bytes=" + content.length);
         List<StaffRecord> records = inputService.parseStaff(new ByteArrayInputStream(content));
         String hash = sha256(content);
         StaffDataset existing = repository.findStaffDatasetByHash(hash);
         if (existing != null) {
+            LOGGER.info(() -> "Dataset can bo da ton tai, hash=" + hash + ", datasetId=" + existing.datasetId());
             if (existing.archived()) {
                 repository.unarchiveStaffDataset(existing.datasetId());
+                LOGGER.info(() -> "Da hien lai dataset can bo dang bi an, datasetId=" + existing.datasetId());
             }
             return new DatasetUploadResult<>(repository.findStaffDatasetById(existing.datasetId()), true);
         }
@@ -80,16 +85,20 @@ public class AssignmentApplicationService {
                 content,
                 records.size()
         );
+        LOGGER.info(() -> "Da tao dataset can bo moi, datasetId=" + datasetId + ", staffCount=" + records.size());
         return new DatasetUploadResult<>(repository.findStaffDatasetById(datasetId), false);
     }
 
     public DatasetUploadResult<RoomDataset> uploadRoomDataset(String name, String fileName, byte[] content) throws IOException, SQLException {
+        LOGGER.info(() -> "Nhan yeu cau upload dataset phong, fileName=" + fileName + ", bytes=" + content.length);
         List<RoomRecord> records = inputService.parseRooms(new ByteArrayInputStream(content));
         String hash = sha256(content);
         RoomDataset existing = repository.findRoomDatasetByHash(hash);
         if (existing != null) {
+            LOGGER.info(() -> "Dataset phong da ton tai, hash=" + hash + ", datasetId=" + existing.datasetId());
             if (existing.archived()) {
                 repository.unarchiveRoomDataset(existing.datasetId());
+                LOGGER.info(() -> "Da hien lai dataset phong dang bi an, datasetId=" + existing.datasetId());
             }
             return new DatasetUploadResult<>(repository.findRoomDatasetById(existing.datasetId()), true);
         }
@@ -103,6 +112,7 @@ public class AssignmentApplicationService {
                 content,
                 records.size()
         );
+        LOGGER.info(() -> "Da tao dataset phong moi, datasetId=" + datasetId + ", roomCount=" + records.size());
         return new DatasetUploadResult<>(repository.findRoomDatasetById(datasetId), false);
     }
 
@@ -162,6 +172,9 @@ public class AssignmentApplicationService {
             int requestedRoomCount,
             int sessionCount
     ) throws Exception {
+        LOGGER.info(() -> "Bat dau tao nhanh moi, name=" + name + ", staffDatasetId=" + staffDatasetId
+                + ", roomDatasetId=" + roomDatasetId + ", requestedStaffCount=" + requestedStaffCount
+                + ", requestedRoomCount=" + requestedRoomCount + ", sessionCount=" + sessionCount);
         StaffDataset staffDataset = requireActiveStaffDataset(staffDatasetId);
         RoomDataset roomDataset = requireActiveRoomDataset(roomDatasetId);
         validateRequestedCounts(staffDataset.staffCount(), roomDataset.roomCount(), requestedStaffCount, requestedRoomCount);
@@ -189,12 +202,15 @@ public class AssignmentApplicationService {
                 null
         );
         repository.createBranch(branch);
+        LOGGER.info(() -> "Da tao branch record, branchId=" + branchId);
         try {
             appendNextSessions(branchId, sessionCount);
         } catch (Exception exception) {
             repository.archiveBranch(branchId);
+            LOGGER.warning(() -> "Tao branch that bai, da an branchId=" + branchId + ", reason=" + exception.getMessage());
             throw exception;
         }
+        LOGGER.info(() -> "Tao nhanh thanh cong, branchId=" + branchId);
         return repository.findBranchById(branchId);
     }
 
@@ -228,6 +244,10 @@ public class AssignmentApplicationService {
                 effectiveRequestedStaffCount,
                 effectiveRequestedRoomCount
         );
+        LOGGER.info(() -> "Bat dau tao them ca cho branchId=" + branchId
+                + ", sessionCount=" + sessionCount
+                + ", effectiveRequestedStaffCount=" + effectiveRequestedStaffCount
+                + ", effectiveRequestedRoomCount=" + effectiveRequestedRoomCount);
         int createdInRequest = 0;
         for (int index = 0; index < sessionCount; index++) {
             List<StaffRecord> staffPool = loadStaffPool(branch.staffDatasetId());
@@ -235,6 +255,14 @@ public class AssignmentApplicationService {
             List<BranchSessionRecord> history = findBranchSessions(branchId);
             long seedBase = Instant.now().toEpochMilli() + history.size() * 104_729L + index * 8191L;
             try {
+                int targetSessionNo = history.size() + 1;
+                long currentSeedBase = seedBase;
+                LOGGER.info(() -> "Dang lap ke hoach cho branchId=" + branchId
+                        + ", sessionNo=" + targetSessionNo
+                        + ", historySize=" + history.size()
+                        + ", staffPoolSize=" + staffPool.size()
+                        + ", roomPoolSize=" + roomPool.size()
+                        + ", seedBase=" + currentSeedBase);
                 NextSessionPlan plan = planner.planNextSession(
                         staffPool,
                         roomPool,
@@ -260,6 +288,11 @@ public class AssignmentApplicationService {
                         jsonService.toJson(plan.session()),
                         jsonService.toJson(summary)
                 );
+                LOGGER.info(() -> "Da lap xong va luu ca thi, branchId=" + branchId
+                        + ", sessionNo=" + plan.session().sessionNo()
+                        + ", roomAssignments=" + plan.session().roomAssignments().size()
+                        + ", hallMonitors=" + plan.session().hallMonitorAssignments().size()
+                        + ", selectionSeed=" + plan.selectionSeed());
                 repository.updateBranchAfterSession(
                         branchId,
                         "SUCCESS",
@@ -270,6 +303,9 @@ public class AssignmentApplicationService {
                 createdInRequest++;
                 branch = repository.findBranchById(branchId);
             } catch (ValidationException exception) {
+                int createdSoFar = createdInRequest;
+                LOGGER.warning(() -> "Khong tao duoc ca moi cho branchId=" + branchId
+                        + ", createdInRequest=" + createdSoFar + ": " + exception.getMessage());
                 if (createdInRequest > 0) {
                     throw new ValidationException("Đã tạo được " + createdInRequest + "/" + sessionCount
                             + " ca. " + exception.getMessage());
@@ -278,6 +314,8 @@ public class AssignmentApplicationService {
             }
         }
         repository.updateBranchOutputStatus(branchId, "NONE", null);
+        int totalCreated = createdInRequest;
+        LOGGER.info(() -> "Hoan tat tao ca cho branchId=" + branchId + ", createdInRequest=" + totalCreated);
         return repository.findBranchById(branchId);
     }
 
@@ -443,10 +481,12 @@ public class AssignmentApplicationService {
         boolean hasInv = repository.findBranchFile(branchId, SchedulingRepository.FILE_ROLE_OUTPUT_INVIGILATORS) != null;
         boolean hasMon = repository.findBranchFile(branchId, SchedulingRepository.FILE_ROLE_OUTPUT_MONITORS) != null;
         if (hasInv && hasMon && "READY".equals(branch.outputStatus())) {
+            LOGGER.info(() -> "Bo qua xuat file vi cache da san sang, branchId=" + branchId);
             return;
         }
 
         List<BranchSessionRecord> sessions = findBranchSessions(branchId);
+        LOGGER.info(() -> "Bat dau xuat file tong hop cho branchId=" + branchId + ", sessionCount=" + sessions.size());
         AssignmentResult exportResult = new AssignmentResult(
                 "SUCCESS",
                 branch.message(),
@@ -470,6 +510,9 @@ public class AssignmentApplicationService {
         );
         repository.updateBranchOutputStatus(branchId, "READY", null);
         cleanupOutputCache(branchId);
+        LOGGER.info(() -> "Xuat file tong hop thanh cong cho branchId=" + branchId
+                + ", invigilatorBytes=" + invigilatorBytes.length
+                + ", monitorBytes=" + monitorBytes.length);
     }
 
     private StaffDataset requireActiveStaffDataset(String datasetId) throws SQLException {
@@ -515,6 +558,7 @@ public class AssignmentApplicationService {
         if (content == null) {
             throw new ValidationException("Không đọc được nội dung bộ dữ liệu cán bộ");
         }
+        LOGGER.info(() -> "Nap lai staff pool tu datasetId=" + datasetId + ", bytes=" + content.length);
         return inputService.parseStaff(new ByteArrayInputStream(content));
     }
 
@@ -523,6 +567,7 @@ public class AssignmentApplicationService {
         if (content == null) {
             throw new ValidationException("Không đọc được nội dung bộ dữ liệu phòng");
         }
+        LOGGER.info(() -> "Nap lai room pool tu datasetId=" + datasetId + ", bytes=" + content.length);
         return inputService.parseRooms(new ByteArrayInputStream(content));
     }
 
@@ -536,8 +581,8 @@ public class AssignmentApplicationService {
         if (requestedRoomCount > roomDatasetSize) {
             throw new ValidationException("Số phòng vượt quá dữ liệu hiện có");
         }
-        if (requestedStaffCount < requestedRoomCount * 2) {
-            throw new ValidationException("Số cán bộ phải ít nhất gấp đôi số phòng");
+        if (requestedStaffCount <= requestedRoomCount * 2) {
+            throw new ValidationException("Số cán bộ phải lớn hơn gấp đôi số phòng để có ít nhất 1 giám sát hành lang");
         }
     }
 

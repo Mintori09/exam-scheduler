@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.logging.Logger;
 import vn.edu.networkprogramming.assignserver.model.BranchSessionRecord;
 import vn.edu.networkprogramming.assignserver.model.HallMonitorAssignment;
 import vn.edu.networkprogramming.assignserver.model.NextSessionPlan;
@@ -24,6 +25,7 @@ public class AssignmentPlanner {
     private static final int SUBSET_ATTEMPTS = 64;
     private static final int SESSION_BUILD_ATTEMPTS = 24;
     private static final int PAIRING_ATTEMPTS_PER_SESSION = 8;
+    private static final Logger LOGGER = Logger.getLogger(AssignmentPlanner.class.getName());
 
     public NextSessionPlan planNextSession(
             List<StaffRecord> staffPool,
@@ -33,6 +35,10 @@ public class AssignmentPlanner {
             List<BranchSessionRecord> history,
             long seedBase
     ) {
+        LOGGER.info(() -> "Planner bat dau planNextSession: requestedStaffCount=" + requestedStaffCount
+                + ", requestedRoomCount=" + requestedRoomCount + ", historySize=" + history.size()
+                + ", staffPoolSize=" + staffPool.size() + ", roomPoolSize=" + roomPool.size()
+                + ", seedBase=" + seedBase);
         if (requestedStaffCount <= 0 || requestedRoomCount <= 0) {
             throw new ValidationException("Số cán bộ và số phòng phải là số nguyên dương");
         }
@@ -42,8 +48,8 @@ public class AssignmentPlanner {
         if (requestedRoomCount > roomPool.size()) {
             throw new ValidationException("Số phòng vượt quá dữ liệu hiện có");
         }
-        if (requestedStaffCount < requestedRoomCount * 2) {
-            throw new ValidationException("Số cán bộ phải ít nhất gấp đôi số phòng");
+        if (requestedStaffCount <= requestedRoomCount * 2) {
+            throw new ValidationException("Số cán bộ phải lớn hơn gấp đôi số phòng để có ít nhất 1 giám sát hành lang");
         }
 
         HistoryContext historyContext = buildHistory(history);
@@ -62,6 +68,12 @@ public class AssignmentPlanner {
                     seed
             );
             if (session != null) {
+                int currentSubsetAttempt = subsetAttempt + 1;
+                LOGGER.info(() -> "Planner tim thay loi giai: sessionNo=" + session.sessionNo()
+                        + ", subsetAttempt=" + currentSubsetAttempt
+                        + ", selectionSeed=" + seed
+                        + ", roomAssignments=" + session.roomAssignments().size()
+                        + ", hallMonitors=" + session.hallMonitorAssignments().size());
                 return new NextSessionPlan(
                         session,
                         seed,
@@ -71,6 +83,7 @@ public class AssignmentPlanner {
             }
         }
 
+        LOGGER.warning(() -> "Planner khong tim duoc loi giai cho sessionNo=" + sessionNo);
         throw new ValidationException("Không thể tạo thêm ca thi với ràng buộc hiện tại. Hãy làm lại nhánh hoặc chọn bộ dữ liệu khác");
     }
 
@@ -123,6 +136,13 @@ public class AssignmentPlanner {
                 }
                 List<RoomAssignment> roomAssignments = assignRooms(rooms, pairs, historyContext.roomsSeenByStaff(), random);
                 if (roomAssignments != null) {
+                    int currentAttempt = attempt + 1;
+                    int currentPairingAttempt = pairingAttempt + 1;
+                    LOGGER.info(() -> "Build session thanh cong: sessionNo=" + sessionNo
+                            + ", sessionAttempt=" + currentAttempt
+                            + ", pairingAttempt=" + currentPairingAttempt
+                            + ", invigilators=" + invigilators.size()
+                            + ", hallMonitors=" + hallMonitors.size());
                     return new SessionAssignment(sessionNo, roomAssignments, buildHallMonitorAssignments(hallMonitors, rooms));
                 }
             }

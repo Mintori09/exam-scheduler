@@ -7,6 +7,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
+
 import org.apache.poi.ss.usermodel.BorderStyle;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Font;
@@ -17,6 +19,7 @@ import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
+
 import vn.edu.networkprogramming.assignserver.model.AssignmentResult;
 import vn.edu.networkprogramming.assignserver.model.HallMonitorAssignment;
 import vn.edu.networkprogramming.assignserver.model.RoomAssignment;
@@ -25,11 +28,12 @@ import vn.edu.networkprogramming.assignserver.model.SessionAssignment;
 public class AssignmentWorkbookExportService {
 
     private static final int STREAMING_WINDOW_SIZE = 200;
-    private static final int ROWS_PER_SHEET = 30;
+    private static final int ROWS_PER_SHEET = 24;
     private static final int INVIGILATOR_COLUMN_COUNT = 6;
     private static final int MONITOR_COLUMN_COUNT = 4;
     private static final String NATIONAL_TITLE = "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM";
     private static final String NATIONAL_SUBTITLE = "Độc lập - Tự do - Hạnh phúc";
+    private static final Logger LOGGER = Logger.getLogger(AssignmentWorkbookExportService.class.getName());
 
     public void writeInvigilatorWorkbook(Path targetFile, AssignmentResult result) throws IOException {
         Files.createDirectories(targetFile.getParent());
@@ -46,6 +50,7 @@ public class AssignmentWorkbookExportService {
     }
 
     public byte[] createInvigilatorWorkbookBytes(AssignmentResult result) throws IOException {
+        LOGGER.info(() -> "Bat dau tao workbook coi thi, sessions=" + result.sessions().size());
         try (SXSSFWorkbook workbook = new SXSSFWorkbook(STREAMING_WINDOW_SIZE);
              ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             ExportStyles styles = createStyles(workbook);
@@ -55,11 +60,13 @@ public class AssignmentWorkbookExportService {
             workbook.write(outputStream);
             byte[] resultBytes = outputStream.toByteArray();
             workbook.dispose();
+            LOGGER.info(() -> "Tao xong workbook coi thi, bytes=" + resultBytes.length);
             return resultBytes;
         }
     }
 
     public byte[] createMonitorWorkbookBytes(AssignmentResult result) throws IOException {
+        LOGGER.info(() -> "Bat dau tao workbook giam sat, sessions=" + result.sessions().size());
         try (SXSSFWorkbook workbook = new SXSSFWorkbook(STREAMING_WINDOW_SIZE);
              ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             ExportStyles styles = createStyles(workbook);
@@ -69,6 +76,7 @@ public class AssignmentWorkbookExportService {
             workbook.write(outputStream);
             byte[] resultBytes = outputStream.toByteArray();
             workbook.dispose();
+            LOGGER.info(() -> "Tao xong workbook giam sat, bytes=" + resultBytes.length);
             return resultBytes;
         }
     }
@@ -96,6 +104,8 @@ public class AssignmentWorkbookExportService {
         }
 
         int sheetCount = Math.max(1, ceilSheetCount(rows.size()));
+        LOGGER.info(() -> "Dang ghi session coi thi, sessionNo=" + session.sessionNo()
+                + ", rows=" + rows.size() + ", sheetCount=" + sheetCount);
         for (int sheetIndex = 0; sheetIndex < sheetCount; sheetIndex++) {
             int fromIndex = sheetIndex * ROWS_PER_SHEET;
             int toIndex = Math.min(fromIndex + ROWS_PER_SHEET, rows.size());
@@ -122,6 +132,8 @@ public class AssignmentWorkbookExportService {
         }
 
         int sheetCount = Math.max(1, ceilSheetCount(rows.size()));
+        LOGGER.info(() -> "Dang ghi session giam sat, sessionNo=" + session.sessionNo()
+                + ", rows=" + rows.size() + ", sheetCount=" + sheetCount);
         for (int sheetIndex = 0; sheetIndex < sheetCount; sheetIndex++) {
             int fromIndex = sheetIndex * ROWS_PER_SHEET;
             int toIndex = Math.min(fromIndex + ROWS_PER_SHEET, rows.size());

@@ -6,6 +6,7 @@ import jakarta.servlet.ServletContextListener;
 import jakarta.servlet.annotation.WebListener;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.logging.Logger;
 import vn.edu.networkprogramming.assignserver.repository.SchedulingRepository;
 import vn.edu.networkprogramming.assignserver.service.AssignmentApplicationService;
 import vn.edu.networkprogramming.assignserver.service.AssignmentPlanner;
@@ -18,6 +19,7 @@ public class AppContextListener implements ServletContextListener {
 
     public static final String ASSIGNMENT_SERVICE_KEY = "assignmentService";
     public static final String JSON_SERVICE_KEY = "jsonService";
+    private static final Logger LOGGER = Logger.getLogger(AppContextListener.class.getName());
     private static final String DEFAULT_DATA_DIR = "assign-server-data";
     private static final String DEFAULT_DB_URL = "jdbc:mysql://localhost:3306/exam_scheduler?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8";
     private static final String DEFAULT_DB_USER = "root";
@@ -56,6 +58,14 @@ public class AppContextListener implements ServletContextListener {
 
             context.setAttribute(ASSIGNMENT_SERVICE_KEY, service);
             context.setAttribute(JSON_SERVICE_KEY, jsonService);
+            Path resolvedDataDir = dataDir;
+            Path resolvedStorageRoot = storageRoot;
+            String resolvedJdbcUrl = jdbcUrl;
+            String contextPath = context.getContextPath();
+            LOGGER.info(() -> "Khoi dong assign-server thanh cong. dataDir=" + resolvedDataDir
+                    + ", storageRoot=" + resolvedStorageRoot
+                    + ", jdbcUrl=" + resolvedJdbcUrl
+                    + ", contextPath=" + contextPath);
         } catch (Exception exception) {
             throw new IllegalStateException("Khong khoi tao duoc assign-server", exception);
         }

@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.logging.Logger;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import vn.edu.networkprogramming.assignserver.model.AssignmentInput;
@@ -16,7 +17,10 @@ import vn.edu.networkprogramming.assignserver.util.ExcelCellValueReader;
 
 public class ExcelAssignmentInputService {
 
+    private static final Logger LOGGER = Logger.getLogger(ExcelAssignmentInputService.class.getName());
+
     public AssignmentInput parse(InputStream staffStream, InputStream roomStream, int sessionCount) throws IOException {
+        LOGGER.info(() -> "Bat dau doc cap file Excel dau vao, sessionCount=" + sessionCount);
         if (sessionCount <= 0) {
             throw new ValidationException("So ca thi phai la so nguyen duong");
         }
@@ -28,10 +32,12 @@ public class ExcelAssignmentInputService {
         if (roomRecords.isEmpty()) {
             throw new ValidationException("Danh sach phong thi khong duoc rong");
         }
+        LOGGER.info(() -> "Doc xong cap file Excel: staffRecords=" + staffRecords.size() + ", roomRecords=" + roomRecords.size());
         return new AssignmentInput(staffRecords, roomRecords, sessionCount);
     }
 
     public List<StaffRecord> parseStaff(InputStream inputStream) throws IOException {
+        LOGGER.info("Bat dau doc file danh sach can bo");
         try (XSSFWorkbook workbook = new XSSFWorkbook(inputStream)) {
             var sheet = workbook.getSheetAt(0);
             ensureHasColumns(sheet.getRow(0), 5);
@@ -52,15 +58,19 @@ public class ExcelAssignmentInputService {
                 }
                 result.add(new StaffRecord(stt, fullName, birthDate, staffCode, department));
             }
+            LOGGER.info(() -> "Doc xong file danh sach can bo, so dong hop le=" + result.size());
             return result;
         } catch (ValidationException exception) {
+            LOGGER.warning(() -> "Loi validate file can bo: " + exception.getMessage());
             throw exception;
         } catch (Exception exception) {
+            LOGGER.warning(() -> "Khong doc duoc file can bo: " + exception.getMessage());
             throw new ValidationException("Khong doc duoc file danh sach can bo");
         }
     }
 
     public List<RoomRecord> parseRooms(InputStream inputStream) throws IOException {
+        LOGGER.info("Bat dau doc file danh sach phong thi");
         try (XSSFWorkbook workbook = new XSSFWorkbook(inputStream)) {
             var sheet = workbook.getSheetAt(0);
             ensureHasColumns(sheet.getRow(0), 3);
@@ -79,10 +89,13 @@ public class ExcelAssignmentInputService {
                 }
                 result.add(new RoomRecord(stt, roomName, location));
             }
+            LOGGER.info(() -> "Doc xong file danh sach phong thi, so dong hop le=" + result.size());
             return result;
         } catch (ValidationException exception) {
+            LOGGER.warning(() -> "Loi validate file phong thi: " + exception.getMessage());
             throw exception;
         } catch (Exception exception) {
+            LOGGER.warning(() -> "Khong doc duoc file phong thi: " + exception.getMessage());
             throw new ValidationException("Khong doc duoc file danh sach phong thi");
         }
     }
