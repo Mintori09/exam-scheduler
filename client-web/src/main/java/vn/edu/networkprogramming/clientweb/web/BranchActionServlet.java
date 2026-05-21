@@ -25,7 +25,14 @@ public class BranchActionServlet extends BasePageServlet {
                 if (!sessionCountValidation.valid()) {
                     throw new IOException(sessionCountValidation.message());
                 }
-                assignServerClient().createNextSession(branchId, Integer.parseInt(req.getParameter("sessionCount")));
+                Integer requestedStaffCount = validateOptionalPositiveCount(req.getParameter("requestedStaffCount"), "Số cán bộ");
+                Integer requestedRoomCount = validateOptionalPositiveCount(req.getParameter("requestedRoomCount"), "Số phòng");
+                assignServerClient().createNextSession(
+                        branchId,
+                        Integer.parseInt(req.getParameter("sessionCount")),
+                        requestedStaffCount,
+                        requestedRoomCount
+                );
                 resp.sendRedirect(req.getContextPath() + "/branches/" + branchId + "?message=Đã+tạo+thêm+ca+thi");
                 return;
             }
@@ -95,6 +102,17 @@ public class BranchActionServlet extends BasePageServlet {
         appendQuery(url, "requestedRoomCount", req.getParameter("requestedRoomCount"));
         appendQuery(url, "sessionCount", req.getParameter("sessionCount"));
         return url.toString();
+    }
+
+    private Integer validateOptionalPositiveCount(String raw, String label) throws IOException {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        var validation = validator().validatePositiveCount(raw, label);
+        if (!validation.valid()) {
+            throw new IOException(validation.message());
+        }
+        return Integer.parseInt(raw);
     }
 
     private void appendQuery(StringBuilder url, String key, String value) {

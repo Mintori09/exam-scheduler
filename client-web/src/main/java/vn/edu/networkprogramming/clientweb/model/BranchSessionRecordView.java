@@ -9,6 +9,8 @@ public record BranchSessionRecordView(
         String branchId,
         int sessionNo,
         long selectionSeed,
+        int requestedStaffCount,
+        int requestedRoomCount,
         List<String> selectedStaffCodes,
         List<String> selectedRoomNames,
         SessionAssignmentView session,
@@ -22,6 +24,8 @@ public record BranchSessionRecordView(
     public String getBranchId() { return branchId; }
     public int getSessionNo() { return sessionNo; }
     public long getSelectionSeed() { return selectionSeed; }
+    public int getRequestedStaffCount() { return requestedStaffCount; }
+    public int getRequestedRoomCount() { return requestedRoomCount; }
     public List<String> getSelectedStaffCodes() { return selectedStaffCodes; }
     public List<String> getSelectedRoomNames() { return selectedRoomNames; }
     public SessionAssignmentView getSession() { return session; }

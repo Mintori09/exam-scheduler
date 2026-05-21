@@ -51,7 +51,14 @@ public class BranchItemServlet extends BaseJsonServlet {
             String[] parts = pathParts(req);
             if (parts.length == 2 && "sessions".equals(parts[1])) {
                 int sessionCount = Integer.parseInt(req.getParameter("sessionCount"));
-                writeJson(resp, HttpServletResponse.SC_OK, assignmentService().appendNextSessions(parts[0], sessionCount));
+                Integer requestedStaffCount = parseOptionalInt(req.getParameter("requestedStaffCount"));
+                Integer requestedRoomCount = parseOptionalInt(req.getParameter("requestedRoomCount"));
+                writeJson(resp, HttpServletResponse.SC_OK, assignmentService().appendNextSessions(
+                        parts[0],
+                        sessionCount,
+                        requestedStaffCount,
+                        requestedRoomCount
+                ));
                 return;
             }
             if (parts.length == 2 && "reset".equals(parts[1])) {
@@ -107,5 +114,12 @@ public class BranchItemServlet extends BaseJsonServlet {
         return java.util.Arrays.stream(pathInfo.split("/"))
                 .filter(part -> !part.isBlank())
                 .toArray(String[]::new);
+    }
+
+    private Integer parseOptionalInt(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return Integer.parseInt(raw);
     }
 }

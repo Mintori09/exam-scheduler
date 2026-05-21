@@ -203,8 +203,31 @@ public class AssignmentApplicationService {
     }
 
     public ScheduleBranch appendNextSessions(String branchId, int sessionCount) throws Exception {
+        return appendNextSessions(branchId, sessionCount, null, null);
+    }
+
+    public ScheduleBranch appendNextSessions(
+            String branchId,
+            int sessionCount,
+            Integer requestedStaffCountOverride,
+            Integer requestedRoomCountOverride
+    ) throws Exception {
         ScheduleBranch branch = requireActiveBranch(branchId);
         validateSessionCount(sessionCount);
+        int effectiveRequestedStaffCount = requestedStaffCountOverride == null
+                ? branch.requestedStaffCount()
+                : requestedStaffCountOverride;
+        int effectiveRequestedRoomCount = requestedRoomCountOverride == null
+                ? branch.requestedRoomCount()
+                : requestedRoomCountOverride;
+        StaffDataset staffDataset = requireActiveStaffDataset(branch.staffDatasetId());
+        RoomDataset roomDataset = requireActiveRoomDataset(branch.roomDatasetId());
+        validateRequestedCounts(
+                staffDataset.staffCount(),
+                roomDataset.roomCount(),
+                effectiveRequestedStaffCount,
+                effectiveRequestedRoomCount
+        );
         int createdInRequest = 0;
         for (int index = 0; index < sessionCount; index++) {
             List<StaffRecord> staffPool = loadStaffPool(branch.staffDatasetId());
@@ -215,8 +238,8 @@ public class AssignmentApplicationService {
                 NextSessionPlan plan = planner.planNextSession(
                         staffPool,
                         roomPool,
-                        branch.requestedStaffCount(),
-                        branch.requestedRoomCount(),
+                        effectiveRequestedStaffCount,
+                        effectiveRequestedRoomCount,
                         history,
                         seedBase
                 );
@@ -230,6 +253,8 @@ public class AssignmentApplicationService {
                         branchId,
                         plan.session().sessionNo(),
                         plan.selectionSeed(),
+                        effectiveRequestedStaffCount,
+                        effectiveRequestedRoomCount,
                         jsonService.toJson(plan.selectedStaffCodes()),
                         jsonService.toJson(plan.selectedRoomNames()),
                         jsonService.toJson(plan.session()),
@@ -360,6 +385,8 @@ public class AssignmentApplicationService {
                 row.branchId(),
                 row.sessionNo(),
                 row.selectionSeed(),
+                row.requestedStaffCount(),
+                row.requestedRoomCount(),
                 jsonService.fromJson(row.selectedStaffCodesJson(), List.class),
                 jsonService.fromJson(row.selectedRoomNamesJson(), List.class),
                 jsonService.fromJson(row.sessionJson(), SessionAssignment.class),

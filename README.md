@@ -31,6 +31,7 @@ He thong phan cong giam thi theo mo hinh `dataset + branch`.
 Neu ton tai file `.env` o root repo, `just` va script deploy se tu nap.
 
 Can tao san database MySQL, vi backend chi tu tao bang, khong tu tao database.
+Khi backend khoi dong, schema cu se duoc tu nang cap them cac cot moi can thiet.
 
 ## Chay project
 

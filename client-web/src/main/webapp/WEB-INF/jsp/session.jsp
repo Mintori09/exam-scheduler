@@ -77,6 +77,10 @@
                 <span>Cán bộ giám sát</span>
                 <strong>${sessionRecord.summary.hallMonitorCount}</strong>
             </div>
+            <div class="summary-item">
+                <span>Cấu hình dùng cho ca này</span>
+                <strong>${sessionRecord.requestedStaffCount} / ${sessionRecord.requestedRoomCount}</strong>
+            </div>
         </div>
     </div>
 

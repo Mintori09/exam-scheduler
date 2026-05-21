@@ -72,6 +72,12 @@
         }
         button.alt { background: #eadfcd; color: var(--text); }
         .actions form { flex: 1 1 180px; }
+        .append-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            align-items: end;
+        }
         .meta-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -174,9 +180,24 @@
 
         <div class="actions">
             <form action="${pageContext.request.contextPath}/branch-actions/${detail.branch.branchId}/sessions" method="post">
-                <label>Số ca thêm</label>
-                <input type="number" name="sessionCount" min="1" value="1" required />
-                <button type="submit" style="margin-top: 10px;">Tạo thêm</button>
+                <div class="append-grid">
+                    <div>
+                        <label>Số ca thêm</label>
+                        <input type="number" name="sessionCount" min="1" value="1" required />
+                    </div>
+                    <div>
+                        <label>Số cán bộ</label>
+                        <input type="number" name="requestedStaffCount" min="1" placeholder="${detail.branch.requestedStaffCount}" />
+                    </div>
+                    <div>
+                        <label>Số phòng</label>
+                        <input type="number" name="requestedRoomCount" min="1" placeholder="${detail.branch.requestedRoomCount}" />
+                    </div>
+                    <div>
+                        <button type="submit">Tạo thêm</button>
+                    </div>
+                </div>
+                <p class="small" style="margin-top: 10px;">Để trống số cán bộ hoặc số phòng nếu muốn dùng cấu hình mặc định của nhánh.</p>
             </form>
             <form action="${pageContext.request.contextPath}/branch-actions/${detail.branch.branchId}/reset" method="post">
                 <label>Tạo lại nhánh</label>
@@ -211,6 +232,7 @@
                     <div class="session-meta">
                         <div><strong>${record.summary.roomAssignmentCount}</strong><br/><span class="small">phòng được phân công</span></div>
                         <div><strong>${record.summary.hallMonitorCount}</strong><br/><span class="small">cán bộ giám sát</span></div>
+                        <div><strong>${record.requestedStaffCount} / ${record.requestedRoomCount}</strong><br/><span class="small">cán bộ / phòng của ca này</span></div>
                         <div><a href="${pageContext.request.contextPath}/branches/${detail.branch.branchId}/sessions/${record.sessionNo}">Xem chi tiết ca</a></div>
                     </div>
                 </div>

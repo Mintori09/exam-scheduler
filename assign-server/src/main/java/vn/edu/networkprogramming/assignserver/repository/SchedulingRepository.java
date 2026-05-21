@@ -87,6 +87,8 @@ public class SchedulingRepository {
                         branch_id varchar(191) not null,
                         session_no int not null,
                         selection_seed bigint not null,
+                        requested_staff_count int not null,
+                        requested_room_count int not null,
                         selected_staff_codes_json longtext not null,
                         selected_room_names_json longtext not null,
                         session_json longtext not null,
@@ -108,6 +110,66 @@ public class SchedulingRepository {
                         foreign key (branch_id) references schedule_branches(branch_id)
                     )
                     """);
+            migrateSchema(connection, statement);
+        }
+    }
+
+    private void migrateSchema(Connection connection, Statement statement) throws SQLException {
+        ensureColumn(connection, statement, "staff_datasets", "archived", "tinyint(1) not null default 0");
+        ensureColumn(connection, statement, "room_datasets", "archived", "tinyint(1) not null default 0");
+
+        ensureColumn(connection, statement, "schedule_branches", "session_created_count", "int not null default 0");
+        ensureColumn(connection, statement, "schedule_branches", "archived", "tinyint(1) not null default 0");
+        ensureColumn(connection, statement, "schedule_branches", "output_status", "varchar(40) not null default 'NONE'");
+        ensureColumn(connection, statement, "schedule_branches", "output_error", "text");
+
+        ensureColumn(connection, statement, "branch_sessions", "requested_staff_count", "int not null default 0");
+        ensureColumn(connection, statement, "branch_sessions", "requested_room_count", "int not null default 0");
+
+        statement.executeUpdate("""
+                update branch_sessions bs
+                set requested_staff_count = (
+                    select sb.requested_staff_count
+                    from schedule_branches sb
+                    where sb.branch_id = bs.branch_id
+                )
+                where requested_staff_count = 0
+                """);
+        statement.executeUpdate("""
+                update branch_sessions bs
+                set requested_room_count = (
+                    select sb.requested_room_count
+                    from schedule_branches sb
+                    where sb.branch_id = bs.branch_id
+                )
+                where requested_room_count = 0
+                """);
+        statement.executeUpdate("""
+                update schedule_branches sb
+                set session_created_count = (
+                    select count(*)
+                    from branch_sessions bs
+                    where bs.branch_id = sb.branch_id
+                )
+                where session_created_count = 0
+                """);
+    }
+
+    private void ensureColumn(Connection connection, Statement statement, String table, String column, String ddl) throws SQLException {
+        if (columnExists(connection, table, column)) {
+            return;
+        }
+        statement.execute("alter table " + table + " add column " + column + " " + ddl);
+    }
+
+    private boolean columnExists(Connection connection, String table, String column) throws SQLException {
+        try (ResultSet rs = connection.getMetaData().getColumns(connection.getCatalog(), null, table, column)) {
+            if (rs.next()) {
+                return true;
+            }
+        }
+        try (ResultSet rs = connection.getMetaData().getColumns(connection.getCatalog(), null, table.toUpperCase(), column.toUpperCase())) {
+            return rs.next();
         }
     }
 
@@ -398,6 +460,8 @@ public class SchedulingRepository {
             String branchId,
             int sessionNo,
             long selectionSeed,
+            int requestedStaffCount,
+            int requestedRoomCount,
             String selectedStaffCodesJson,
             String selectedRoomNamesJson,
             String sessionJson,
@@ -406,18 +470,20 @@ public class SchedulingRepository {
         try (Connection connection = open();
              PreparedStatement statement = connection.prepareStatement("""
                      insert into branch_sessions (
-                         branch_id, session_no, selection_seed, selected_staff_codes_json,
-                         selected_room_names_json, session_json, summary_json, created_at
-                     ) values (?, ?, ?, ?, ?, ?, ?, ?)
+                         branch_id, session_no, selection_seed, requested_staff_count, requested_room_count,
+                         selected_staff_codes_json, selected_room_names_json, session_json, summary_json, created_at
+                     ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                      """)) {
             statement.setString(1, branchId);
             statement.setInt(2, sessionNo);
             statement.setLong(3, selectionSeed);
-            statement.setString(4, selectedStaffCodesJson);
-            statement.setString(5, selectedRoomNamesJson);
-            statement.setString(6, sessionJson);
-            statement.setString(7, summaryJson);
-            statement.setString(8, Instant.now().toString());
+            statement.setInt(4, requestedStaffCount);
+            statement.setInt(5, requestedRoomCount);
+            statement.setString(6, selectedStaffCodesJson);
+            statement.setString(7, selectedRoomNamesJson);
+            statement.setString(8, sessionJson);
+            statement.setString(9, summaryJson);
+            statement.setString(10, Instant.now().toString());
             statement.executeUpdate();
         }
     }
@@ -425,7 +491,7 @@ public class SchedulingRepository {
     public List<BranchSessionRow> findBranchSessionRows(String branchId) throws SQLException {
         try (Connection connection = open();
              PreparedStatement statement = connection.prepareStatement("""
-                     select branch_id, session_no, selection_seed, selected_staff_codes_json,
+                     select branch_id, session_no, selection_seed, requested_staff_count, requested_room_count, selected_staff_codes_json,
                             selected_room_names_json, session_json, summary_json, created_at
                      from branch_sessions
                      where branch_id = ?
@@ -439,6 +505,8 @@ public class SchedulingRepository {
                             rs.getString("branch_id"),
                             rs.getInt("session_no"),
                             rs.getLong("selection_seed"),
+                            rs.getInt("requested_staff_count"),
+                            rs.getInt("requested_room_count"),
                             rs.getString("selected_staff_codes_json"),
                             rs.getString("selected_room_names_json"),
                             rs.getString("session_json"),
@@ -454,7 +522,7 @@ public class SchedulingRepository {
     public BranchSessionRow findBranchSessionRow(String branchId, int sessionNo) throws SQLException {
         try (Connection connection = open();
              PreparedStatement statement = connection.prepareStatement("""
-                     select branch_id, session_no, selection_seed, selected_staff_codes_json,
+                     select branch_id, session_no, selection_seed, requested_staff_count, requested_room_count, selected_staff_codes_json,
                             selected_room_names_json, session_json, summary_json, created_at
                      from branch_sessions
                      where branch_id = ? and session_no = ?
@@ -469,6 +537,8 @@ public class SchedulingRepository {
                         rs.getString("branch_id"),
                         rs.getInt("session_no"),
                         rs.getLong("selection_seed"),
+                        rs.getInt("requested_staff_count"),
+                        rs.getInt("requested_room_count"),
                         rs.getString("selected_staff_codes_json"),
                         rs.getString("selected_room_names_json"),
                         rs.getString("session_json"),
@@ -632,6 +702,8 @@ public class SchedulingRepository {
             String branchId,
             int sessionNo,
             long selectionSeed,
+            int requestedStaffCount,
+            int requestedRoomCount,
             String selectedStaffCodesJson,
             String selectedRoomNamesJson,
             String sessionJson,

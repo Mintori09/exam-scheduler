@@ -7,6 +7,8 @@ public record BranchSessionRecord(
         String branchId,
         int sessionNo,
         long selectionSeed,
+        int requestedStaffCount,
+        int requestedRoomCount,
         List<String> selectedStaffCodes,
         List<String> selectedRoomNames,
         SessionAssignment session,

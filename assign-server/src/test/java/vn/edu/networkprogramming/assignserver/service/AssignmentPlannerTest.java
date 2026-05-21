@@ -32,6 +32,8 @@ class AssignmentPlannerTest {
                 "B1",
                 1,
                 first.selectionSeed(),
+                8,
+                3,
                 first.selectedStaffCodes(),
                 first.selectedRoomNames(),
                 first.session(),

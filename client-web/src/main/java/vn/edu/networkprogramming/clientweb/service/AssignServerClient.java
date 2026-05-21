@@ -109,12 +109,20 @@ public class AssignServerClient {
         return postForm("/api/branches", body, ScheduleBranchView.class);
     }
 
-    public ScheduleBranchView createNextSession(String branchId, int sessionCount) throws IOException, InterruptedException {
-        return postForm(
-                "/api/branches/" + encode(branchId) + "/sessions",
-                "sessionCount=" + sessionCount,
-                ScheduleBranchView.class
-        );
+    public ScheduleBranchView createNextSession(
+            String branchId,
+            int sessionCount,
+            Integer requestedStaffCount,
+            Integer requestedRoomCount
+    ) throws IOException, InterruptedException {
+        StringBuilder body = new StringBuilder("sessionCount=").append(sessionCount);
+        if (requestedStaffCount != null) {
+            body.append("&requestedStaffCount=").append(requestedStaffCount);
+        }
+        if (requestedRoomCount != null) {
+            body.append("&requestedRoomCount=").append(requestedRoomCount);
+        }
+        return postForm("/api/branches/" + encode(branchId) + "/sessions", body.toString(), ScheduleBranchView.class);
     }
 
     public ScheduleBranchView resetBranch(String branchId, String name) throws IOException, InterruptedException {

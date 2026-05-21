@@ -220,7 +220,7 @@
         }
         .branch-count {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 10px;
             align-items: end;
             margin-bottom: 12px;
@@ -577,6 +577,19 @@
                                             <label>Số ca thêm</label>
                                             <input type="number" name="sessionCount" min="1" value="1" required />
                                         </div>
+                                        <div>
+                                            <label>Số cán bộ</label>
+                                            <input type="number" name="requestedStaffCount" min="1" placeholder="${branch.requestedStaffCount}" />
+                                        </div>
+                                        <div>
+                                            <label>Số phòng</label>
+                                            <input type="number" name="requestedRoomCount" min="1" placeholder="${branch.requestedRoomCount}" />
+                                        </div>
+                                    </div>
+                                    <div class="helper" style="margin-bottom: 12px;">Để trống để dùng cấu hình mặc định của nhánh.</div>
+                                    <div class="branch-count">
+                                        <div></div>
+                                        <div></div>
                                         <div class="button-block">
                                             <button type="submit">Tạo thêm</button>
                                         </div>
