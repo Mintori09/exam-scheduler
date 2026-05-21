@@ -62,7 +62,15 @@ class AssignmentApplicationServiceTest {
         assertNotNull(invFile);
         try (XSSFWorkbook workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(invFile.content()))) {
             assertEquals(2, workbook.getNumberOfSheets());
+            assertEquals("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", workbook.getSheetAt(0).getRow(0).getCell(0).getStringCellValue());
             assertTrue(workbook.getSheetAt(0).getLastRowNum() > 0);
+        }
+
+        var sessionInvFile = service.getSessionInvigilatorFile(branch.branchId(), 1);
+        assertNotNull(sessionInvFile);
+        try (XSSFWorkbook workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(sessionInvFile.content()))) {
+            assertEquals(1, workbook.getNumberOfSheets());
+            assertEquals("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", workbook.getSheetAt(0).getRow(0).getCell(0).getStringCellValue());
         }
     }
 

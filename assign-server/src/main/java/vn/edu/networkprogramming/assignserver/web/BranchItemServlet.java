@@ -39,6 +39,10 @@ public class BranchItemServlet extends BaseJsonServlet {
                 handleDownload(resp, parts[0], parts[2]);
                 return;
             }
+            if (parts.length == 5 && "sessions".equals(parts[1]) && "downloads".equals(parts[3])) {
+                handleSessionDownload(resp, parts[0], Integer.parseInt(parts[2]), parts[4]);
+                return;
+            }
             writeJson(resp, HttpServletResponse.SC_NOT_FOUND, new ApiErrorResponse("FAILED", "API khong ton tai"));
         } catch (Exception exception) {
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, new ApiErrorResponse("FAILED", exception.getMessage()));
@@ -100,6 +104,20 @@ public class BranchItemServlet extends BaseJsonServlet {
             writeJson(resp, HttpServletResponse.SC_NOT_FOUND, new ApiErrorResponse("FAILED", "Khong tim thay file ket qua"));
             return;
         }
+        resp.setStatus(HttpServletResponse.SC_OK);
+        resp.setContentType(file.mimeType());
+        resp.setHeader("Content-Disposition", "attachment; filename=\"" + file.fileName() + "\"");
+        resp.getOutputStream().write(file.content());
+    }
+
+    private void handleSessionDownload(HttpServletResponse resp, String branchId, int sessionNo, String type) throws Exception {
+        if (!"invigilators".equals(type) && !"monitors".equals(type)) {
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, new ApiErrorResponse("FAILED", "Loai file khong hop le"));
+            return;
+        }
+        var file = "invigilators".equals(type)
+                ? assignmentService().getSessionInvigilatorFile(branchId, sessionNo)
+                : assignmentService().getSessionMonitorFile(branchId, sessionNo);
         resp.setStatus(HttpServletResponse.SC_OK);
         resp.setContentType(file.mimeType());
         resp.setHeader("Content-Disposition", "attachment; filename=\"" + file.fileName() + "\"");

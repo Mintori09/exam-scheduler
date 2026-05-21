@@ -371,6 +371,38 @@ public class AssignmentApplicationService {
         return repository.findBranchFile(branchId, SchedulingRepository.FILE_ROLE_OUTPUT_MONITORS);
     }
 
+    public AssignmentFileContent getSessionInvigilatorFile(String branchId, int sessionNo) throws Exception {
+        ScheduleBranch branch = requireActiveBranch(branchId);
+        BranchSessionRecord session = getRequiredBranchSession(branch.branchId(), sessionNo);
+        AssignmentResult exportResult = new AssignmentResult(
+                "SUCCESS",
+                branch.message(),
+                List.of(session.session())
+        );
+        return new AssignmentFileContent(
+                "session_invigilators",
+                "DANHSACH_COITHI_CA_" + sessionNo + ".xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                exportService.createInvigilatorWorkbookBytes(exportResult)
+        );
+    }
+
+    public AssignmentFileContent getSessionMonitorFile(String branchId, int sessionNo) throws Exception {
+        ScheduleBranch branch = requireActiveBranch(branchId);
+        BranchSessionRecord session = getRequiredBranchSession(branch.branchId(), sessionNo);
+        AssignmentResult exportResult = new AssignmentResult(
+                "SUCCESS",
+                branch.message(),
+                List.of(session.session())
+        );
+        return new AssignmentFileContent(
+                "session_monitors",
+                "DANHSACH_GIAMSAT_CA_" + sessionNo + ".xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                exportService.createMonitorWorkbookBytes(exportResult)
+        );
+    }
+
     public List<BranchSessionRecord> findBranchSessions(String branchId) throws Exception {
         List<SchedulingRepository.BranchSessionRow> rows = repository.findBranchSessionRows(branchId);
         List<BranchSessionRecord> result = new ArrayList<>();
@@ -393,6 +425,14 @@ public class AssignmentApplicationService {
                 jsonService.fromJson(row.summaryJson(), AssignmentSummary.class),
                 row.createdAt()
         );
+    }
+
+    private BranchSessionRecord getRequiredBranchSession(String branchId, int sessionNo) throws Exception {
+        BranchSessionRecord session = getBranchSessionDetail(branchId, sessionNo);
+        if (session == null) {
+            throw new ValidationException("Không tìm thấy chi tiết ca thi");
+        }
+        return session;
     }
 
     private void ensureOutputFilesGenerated(String branchId) throws Exception {

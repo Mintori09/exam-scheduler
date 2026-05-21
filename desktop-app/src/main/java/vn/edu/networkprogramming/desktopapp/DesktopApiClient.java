@@ -167,6 +167,26 @@ final class DesktopApiClient {
         return new DownloadedFile(filename, response.body());
     }
 
+    DownloadedFile downloadSessionFile(String branchId, int sessionNo, String type) throws IOException, InterruptedException {
+        HttpRequest request = newRequestBuilder()
+                .uri(URI.create(serverBaseUrl + "/api/branches/" + encode(branchId) + "/sessions/" + sessionNo + "/downloads/" + type))
+                .GET()
+                .build();
+        HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        ensureSuccess(response.statusCode(), new String(response.body(), StandardCharsets.UTF_8));
+        String filename = response.headers()
+                .firstValue("Content-Disposition")
+                .map(value -> {
+                    int index = value.indexOf("filename=\"");
+                    if (index < 0) {
+                        return "ca-" + sessionNo + "-" + type + ".xlsx";
+                    }
+                    return value.substring(index + 10, value.lastIndexOf('"'));
+                })
+                .orElse("ca-" + sessionNo + "-" + type + ".xlsx");
+        return new DownloadedFile(filename, response.body());
+    }
+
     private HttpResponse<String> sendJsonGet(String path) throws IOException, InterruptedException {
         HttpRequest request = newRequestBuilder()
                 .uri(URI.create(serverBaseUrl + path))

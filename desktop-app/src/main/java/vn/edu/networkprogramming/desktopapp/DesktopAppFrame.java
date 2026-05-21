@@ -370,10 +370,10 @@ final class DesktopAppFrame extends JFrame {
         actions.setOpaque(false);
         JButton viewButton = createButton("Xem ca", BRAND, Color.WHITE);
         viewButton.addActionListener(event -> showSelectedSessionDetail());
-        JButton invButton = createButton("Tải DS coi thi", BRAND_DARK, Color.WHITE);
-        invButton.addActionListener(event -> downloadOutput("invigilators"));
-        JButton monButton = createButton("Tải DS giám sát", SOFT, TEXT);
-        monButton.addActionListener(event -> downloadOutput("monitors"));
+        JButton invButton = createButton("Tải ca coi thi", BRAND_DARK, Color.WHITE);
+        invButton.addActionListener(event -> downloadSelectedSessionOutput("invigilators"));
+        JButton monButton = createButton("Tải ca giám sát", SOFT, TEXT);
+        monButton.addActionListener(event -> downloadSelectedSessionOutput("monitors"));
         actions.add(viewButton);
         actions.add(invButton);
         actions.add(monButton);
@@ -955,6 +955,31 @@ final class DesktopAppFrame extends JFrame {
             return;
         }
         runTask("Đang tải file kết quả...", () -> apiClient.downloadFile(branch.branchId(), type), file -> {
+            Path path = showNativeSaveDialog(file.filename());
+            if (path == null) {
+                return;
+            }
+            Files.write(path, file.content());
+            showInfo("Đã lưu file tại: " + path);
+        });
+    }
+
+    private void downloadSelectedSessionOutput(String type) {
+        ScheduleBranchView branch = selectedBranch();
+        if (branch == null) {
+            showWarning("Hãy chọn một nhánh trước.");
+            return;
+        }
+        if (branch.archived()) {
+            showWarning("Nhánh đang ẩn. Hãy hiện lại nhánh trước khi tải file kết quả.");
+            return;
+        }
+        BranchSessionRecordView session = selectedSession();
+        if (session == null) {
+            showWarning("Hãy chọn một ca để tải file.");
+            return;
+        }
+        runTask("Đang tải file của ca đã chọn...", () -> apiClient.downloadSessionFile(branch.branchId(), session.sessionNo(), type), file -> {
             Path path = showNativeSaveDialog(file.filename());
             if (path == null) {
                 return;
