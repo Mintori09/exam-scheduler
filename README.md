@@ -8,6 +8,7 @@ He thong phan cong giam thi theo mo hinh `dataset + branch`.
 |---|---:|---|
 | `assign-server` | `8081` | API backend, luu MySQL, quan ly dataset/branch, sinh ca thi |
 | `client-web` | `8080` | Giao dien JSP de upload dataset, tao branch, tao ca tiep, reset, export |
+| `desktop-app` | - | Ung dung Java desktop de thao tac voi backend tren giao dien Swing |
 
 ## Yeu cau
 
@@ -54,9 +55,26 @@ Hoac dung:
 ```bash
 just backend
 just frontend
+just desktop
 ```
 
 Mo `http://localhost:8080`.
+
+## Chay desktop app
+
+```bash
+mvn -q -f desktop-app/pom.xml compile
+mvn -f desktop-app/pom.xml exec:java -DserverBaseUrl=http://localhost:8081/assign-server
+```
+
+Desktop app su dung cung backend `assign-server`, co cac chuc nang:
+
+- tai bo du lieu can bo / phong
+- tao nhanh moi
+- tao them ca, doi cau hinh theo tung ca
+- lam lai nhanh
+- an / hien, doi ten du lieu va nhanh
+- tai file ket qua va xem nhanh chi tiet tung ca
 
 ## Luong su dung
 

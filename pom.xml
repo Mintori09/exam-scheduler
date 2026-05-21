@@ -11,6 +11,7 @@
     <modules>
         <module>assign-server</module>
         <module>client-web</module>
+        <module>desktop-app</module>
     </modules>
 
     <properties>
