@@ -6,7 +6,7 @@ He thong phan cong giam thi theo mo hinh `dataset + branch`.
 
 | Service | Port mac dinh | Vai tro |
 |---|---:|---|
-| `assign-server` | `8081` | API backend, luu SQLite, quan ly dataset/branch, sinh ca thi |
+| `assign-server` | `8081` | API backend, luu MySQL, quan ly dataset/branch, sinh ca thi |
 | `client-web` | `8080` | Giao dien JSP de upload dataset, tao branch, tao ca tiep, reset, export |
 
 ## Yeu cau
@@ -22,10 +22,15 @@ He thong phan cong giam thi theo mo hinh `dataset + branch`.
 | `BACKEND_PORT` | `8081` | Port cua `assign-server` |
 | `FRONTEND_PORT` | `8080` | Port cua `client-web` |
 | `SERVER_BASE_URL` | `http://localhost:8081/assign-server` | URL frontend goi backend |
-| `ASSIGN_SERVER_DATA_DIR` | `assign-server-data` | Thu muc du lieu SQLite/output |
+| `ASSIGN_SERVER_DATA_DIR` | `assign-server-data` | Thu muc tam cho file runtime/output |
+| `ASSIGN_DB_URL` | `jdbc:mysql://localhost:3306/exam_scheduler?...` | Chuoi ket noi MySQL |
+| `ASSIGN_DB_USER` | `root` | Tai khoan MySQL |
+| `ASSIGN_DB_PASSWORD` | rong | Mat khau MySQL |
 | `BIND_HOST` | `0.0.0.0` | Host bind cho script deploy |
 
 Neu ton tai file `.env` o root repo, `just` va script deploy se tu nap.
+
+Can tao san database MySQL, vi backend chi tu tao bang, khong tu tao database.
 
 ## Chay project
 
@@ -33,7 +38,7 @@ Backend:
 
 ```bash
 mvn -q -f assign-server/pom.xml clean compile
-mvn -f assign-server/pom.xml jetty:run -Djetty.http.port=8081 -DdataDir=assign-server-data
+mvn -f assign-server/pom.xml jetty:run -Djetty.http.port=8081 -Dassign.dataDir=assign-server-data -Dassign.dbUrl="jdbc:mysql://localhost:3306/exam_scheduler?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh&characterEncoding=UTF-8" -Dassign.dbUser=root -Dassign.dbPassword=
 ```
 
 Frontend o terminal khac:
@@ -75,7 +80,8 @@ Mo `http://localhost:8080`.
 - Trong cung 1 branch:
   - giam thi khong quay lai phong da tung coi
   - cap giam thi khong duoc lap lai
-- Neu `so giam thi` hoac `so phong thi` nho hon file, he thong chon ngau nhien tap con va luu lai `seed` + danh sach da chon
+- Neu `so giam thi` nho hon file, he thong chon ngau nhien tap con
+- Neu `so phong thi` nho hon file, he thong lay phong tu tren xuong
 - Neu branch khong con kha nang sinh ca hop le, he thong bao loi va goi y reset
 
 ## API chinh

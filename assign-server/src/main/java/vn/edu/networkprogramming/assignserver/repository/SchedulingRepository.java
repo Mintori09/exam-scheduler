@@ -1,6 +1,5 @@
 package vn.edu.networkprogramming.assignserver.repository;
 
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -11,7 +10,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import vn.edu.networkprogramming.assignserver.model.AssignmentFileContent;
-import vn.edu.networkprogramming.assignserver.model.BranchSessionRecord;
 import vn.edu.networkprogramming.assignserver.model.RoomDataset;
 import vn.edu.networkprogramming.assignserver.model.ScheduleBranch;
 import vn.edu.networkprogramming.assignserver.model.StaffDataset;
@@ -22,57 +20,63 @@ public class SchedulingRepository {
     public static final String FILE_ROLE_OUTPUT_MONITORS = "output_monitors";
 
     private final String jdbcUrl;
+    private final String jdbcUser;
+    private final String jdbcPassword;
 
-    public SchedulingRepository(Path dbPath) {
-        this.jdbcUrl = "jdbc:sqlite:" + dbPath.toAbsolutePath();
+    public SchedulingRepository(String jdbcUrl) {
+        this(jdbcUrl, null, null);
+    }
+
+    public SchedulingRepository(String jdbcUrl, String jdbcUser, String jdbcPassword) {
+        this.jdbcUrl = jdbcUrl;
+        this.jdbcUser = jdbcUser;
+        this.jdbcPassword = jdbcPassword;
     }
 
     public void initialize() throws SQLException {
         try (Connection connection = open(); Statement statement = connection.createStatement()) {
-            statement.execute("pragma journal_mode = WAL");
-            statement.execute("pragma busy_timeout = 10000");
             statement.execute("""
                     create table if not exists staff_datasets (
-                        dataset_id text primary key,
-                        name text not null,
-                        content_hash text not null unique,
-                        original_file_name text not null,
-                        mime_type text not null,
-                        content_blob blob not null,
-                        staff_count integer not null,
-                        created_at text not null,
-                        archived integer not null default 0
+                        dataset_id varchar(191) primary key,
+                        name varchar(255) not null,
+                        content_hash varchar(64) not null unique,
+                        original_file_name varchar(255) not null,
+                        mime_type varchar(255) not null,
+                        content_blob longblob not null,
+                        staff_count int not null,
+                        created_at varchar(40) not null,
+                        archived tinyint(1) not null default 0
                     )
                     """);
             statement.execute("""
                     create table if not exists room_datasets (
-                        dataset_id text primary key,
-                        name text not null,
-                        content_hash text not null unique,
-                        original_file_name text not null,
-                        mime_type text not null,
-                        content_blob blob not null,
-                        room_count integer not null,
-                        created_at text not null,
-                        archived integer not null default 0
+                        dataset_id varchar(191) primary key,
+                        name varchar(255) not null,
+                        content_hash varchar(64) not null unique,
+                        original_file_name varchar(255) not null,
+                        mime_type varchar(255) not null,
+                        content_blob longblob not null,
+                        room_count int not null,
+                        created_at varchar(40) not null,
+                        archived tinyint(1) not null default 0
                     )
                     """);
             statement.execute("""
                     create table if not exists schedule_branches (
-                        branch_id text primary key,
-                        name text not null,
-                        status text not null,
+                        branch_id varchar(191) primary key,
+                        name varchar(255) not null,
+                        status varchar(40) not null,
                         message text,
-                        created_at text not null,
-                        updated_at text not null,
-                        staff_dataset_id text not null,
-                        room_dataset_id text not null,
-                        requested_staff_count integer not null,
-                        requested_room_count integer not null,
-                        next_session_no integer not null,
-                        session_created_count integer not null default 0,
-                        archived integer not null default 0,
-                        output_status text not null default 'NONE',
+                        created_at varchar(40) not null,
+                        updated_at varchar(40) not null,
+                        staff_dataset_id varchar(191) not null,
+                        room_dataset_id varchar(191) not null,
+                        requested_staff_count int not null,
+                        requested_room_count int not null,
+                        next_session_no int not null,
+                        session_created_count int not null default 0,
+                        archived tinyint(1) not null default 0,
+                        output_status varchar(40) not null default 'NONE',
                         output_error text,
                         foreign key (staff_dataset_id) references staff_datasets(dataset_id),
                         foreign key (room_dataset_id) references room_datasets(dataset_id)
@@ -80,26 +84,26 @@ public class SchedulingRepository {
                     """);
             statement.execute("""
                     create table if not exists branch_sessions (
-                        branch_id text not null,
-                        session_no integer not null,
-                        selection_seed integer not null,
-                        selected_staff_codes_json text not null,
-                        selected_room_names_json text not null,
-                        session_json text not null,
-                        summary_json text not null,
-                        created_at text not null,
+                        branch_id varchar(191) not null,
+                        session_no int not null,
+                        selection_seed bigint not null,
+                        selected_staff_codes_json longtext not null,
+                        selected_room_names_json longtext not null,
+                        session_json longtext not null,
+                        summary_json longtext not null,
+                        created_at varchar(40) not null,
                         primary key (branch_id, session_no),
                         foreign key (branch_id) references schedule_branches(branch_id)
                     )
                     """);
             statement.execute("""
                     create table if not exists branch_files (
-                        branch_id text not null,
-                        file_role text not null,
-                        original_name text not null,
-                        mime_type text not null,
-                        content_blob blob not null,
-                        created_at text not null,
+                        branch_id varchar(191) not null,
+                        file_role varchar(64) not null,
+                        original_name varchar(255) not null,
+                        mime_type varchar(255) not null,
+                        content_blob longblob not null,
+                        created_at varchar(40) not null,
                         primary key (branch_id, file_role),
                         foreign key (branch_id) references schedule_branches(branch_id)
                     )
@@ -477,21 +481,36 @@ public class SchedulingRepository {
 
     public void upsertBranchFile(String branchId, String role, String fileName, String mimeType, byte[] content) throws SQLException {
         try (Connection connection = open();
-             PreparedStatement statement = connection.prepareStatement("""
+             PreparedStatement update = connection.prepareStatement("""
+                     update branch_files
+                     set original_name = ?, mime_type = ?, content_blob = ?, created_at = ?
+                     where branch_id = ? and file_role = ?
+                     """)) {
+            String now = Instant.now().toString();
+            update.setString(1, fileName);
+            update.setString(2, mimeType);
+            update.setBytes(3, content);
+            update.setString(4, now);
+            update.setString(5, branchId);
+            update.setString(6, role);
+            int updated = update.executeUpdate();
+            if (updated > 0) {
+                return;
+            }
+        }
+
+        try (Connection connection = open();
+             PreparedStatement insert = connection.prepareStatement("""
                      insert into branch_files (branch_id, file_role, original_name, mime_type, content_blob, created_at)
                      values (?, ?, ?, ?, ?, ?)
-                     on conflict(branch_id, file_role) do update set
-                        original_name = excluded.original_name,
-                        mime_type = excluded.mime_type,
-                        content_blob = excluded.content_blob
                      """)) {
-            statement.setString(1, branchId);
-            statement.setString(2, role);
-            statement.setString(3, fileName);
-            statement.setString(4, mimeType);
-            statement.setBytes(5, content);
-            statement.setString(6, Instant.now().toString());
-            statement.executeUpdate();
+            insert.setString(1, branchId);
+            insert.setString(2, role);
+            insert.setString(3, fileName);
+            insert.setString(4, mimeType);
+            insert.setBytes(5, content);
+            insert.setString(6, Instant.now().toString());
+            insert.executeUpdate();
         }
     }
 
@@ -603,15 +622,10 @@ public class SchedulingRepository {
     }
 
     private Connection open() throws SQLException {
-        Connection connection = DriverManager.getConnection(jdbcUrl);
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("pragma busy_timeout = 10000");
-            statement.execute("pragma journal_mode = WAL");
-            statement.execute("pragma synchronous = NORMAL");
-            statement.execute("pragma temp_store = MEMORY");
-            statement.execute("pragma cache_size = -200000");
+        if (jdbcUser == null || jdbcUser.isBlank()) {
+            return DriverManager.getConnection(jdbcUrl);
         }
-        return connection;
+        return DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword == null ? "" : jdbcPassword);
     }
 
     public record BranchSessionRow(

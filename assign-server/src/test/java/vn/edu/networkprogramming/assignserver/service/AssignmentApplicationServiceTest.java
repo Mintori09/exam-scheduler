@@ -16,7 +16,8 @@ class AssignmentApplicationServiceTest {
     @Test
     void uploadsDatasetsCreatesBranchAndExports() throws Exception {
         Path tempDir = Files.createTempDirectory("exam-scheduler-test");
-        SchedulingRepository repository = new SchedulingRepository(tempDir.resolve("test.db"));
+        String jdbcUrl = "jdbc:h2:mem:exam_scheduler_test;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1";
+        SchedulingRepository repository = new SchedulingRepository(jdbcUrl, "sa", "");
         repository.initialize();
         AssignmentApplicationService service = new AssignmentApplicationService(
                 new ExcelAssignmentInputService(),
